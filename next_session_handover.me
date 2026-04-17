@@ -77,13 +77,15 @@
 
 ### 1순위 — Phase 6.4 Claude 페어리티
 
+- **기본 웹 검색 MCP (키 불필요)** — Brave는 키 필요. OVO 사이드카에 `duckduckgo-search` 기반 `/ovo/websearch` 엔드포인트 + tool catalog에 내장 `web_search` 툴 주입. 오빠 확정 요구.
 - **`/compact` 수동 트리거 UI** — auto-compact 엔진 재사용, 채팅 상단 슬래시 커맨드 바
 - **`.ovo/skills/`** — Claude `.claude/skills/` 대응, 폴더 스캔 → 시스템 프롬프트 카탈로그 주입
 - **`/memory` 명령** — Claude Code 대응 (`/memory add/list/remove`)
 - **Plan 모드 정교화** — 시스템 프롬프트에 "plan only, no execution" 명시
 - **MCP memory 브릿지** — `@modelcontextprotocol/server-memory`를 OVO Wiki FTS 백엔드로 연결
-- **MCP env 인라인 에디터** — 현재 `window.prompt()` → Settings 섹션에 폼 UI
+- **MCP env 수정 UI** — 현재 AddServerForm 재사용으로 생성 시점은 해결. 이후 편집은 remove+re-add. 인라인 에디트 버튼 추가 필요.
 - **Reasoning 모델 플래그** — 모델 메타에 `"reasoning"` capability 추가, R1 implicit-open 시 초기 owlState 유지
+- **샘플링 파라미터 UI** — `repetition_penalty` / `temperature` / `top_p` 슬라이더 (반복 루프 가드와 별개)
 
 ### 2순위 — Phase 7+ 이미지 생성 MVP
 
@@ -111,6 +113,23 @@ compact 기반 위에 실제 편집 경험 얹기.
 7. **`.ovo/skills/`, `/compact`, `/memory`** — 6.4 산출물 전부 IDE 안에서도 동일 동작
 
 이게 완성되어야 북스타 "**모든 모델을 쓸 수 있는 로컬 Claude**"가 실질적으로 닫힘.
+
+### 릴리스 전(Phase 9) — 보안 점검 (오빠 확정)
+
+IDE 완성 후, 공개 배포 전에 반드시 통과시켜야 할 감사 항목:
+
+1. **비밀 저장소** — 현재 MCP env(API 키 포함)는 localStorage 평문. macOS Keychain / OS Credential Manager로 이관. 키가 devtools에서 보이면 탈락.
+2. **Tauri capabilities** — `default.json`의 `fs:*`, `dialog:*` 스코프가 너무 넓은지 감사. 플러그인별 `allow-*-recursive` → 필요 경로로 축소.
+3. **사이드카 바인딩** — FastAPI 3개 포트가 `127.0.0.1`에만 바인딩되는지 확인. `0.0.0.0` 노출 금지.
+4. **CSP** — `tauri.conf.json::security.csp` 현재 null. production은 `default-src 'self'`부터 시작해 빌드 시점 CSP 해시 발행.
+5. **SQLite 권한** — `$APPDATA/com.ovoment.ovo/` 디렉터리 OS 권한 700 확인. 백업 가이드 + `VACUUM`으로 삭제 메시지 잔재 제거.
+6. **MCP 프로세스 격리** — filesystem 서버가 project_path 밖 경로 접근 못 하게 Rust 쪽에서 pre-spawn validation. `..` 포함 argv 거부.
+7. **로그 민감정보 마스킹** — Rust `log::info`, Python `logger.info`에 API 키 / 토큰 / 사용자 쿼리 원문이 찍히지 않는지 grep. `env`와 `authorization` 헤더는 마스킹.
+8. **코드 서명 / 공증** — macOS DMG 배포 시 Developer ID 인증서 + notarytool 통과. 미서명 .dmg 배포 금지.
+9. **Auto-update 서명** — Tauri updater 공개키 배포, 릴리스 서버 HTTPS + 서명 `.sig` 검증.
+10. **패키지 공급망** — `npm ci` (lock 엄격), `uv pip sync` (requirements.txt 해시 잠금), `cargo audit` CI 통합.
+11. **MCP 외부 서버 레드팀** — community MCP 패키지는 임의 코드 실행 가능. 프리셋 설명에 "서드파티" 라벨. `brave-search` / Anthropic 공식 외엔 기본 비활성.
+12. **이미지 생성 (Phase 7+)** — 생성된 이미지에 Content Credentials (C2PA) 또는 기본 메타데이터 주입 옵션 고려.
 
 ---
 
