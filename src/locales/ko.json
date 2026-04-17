@@ -34,7 +34,17 @@
     "send": "보내기",
     "stop": "중지",
     "thinking": "생각 중…",
-    "clear": "대화 지우기"
+    "clear": "대화 지우기",
+    "pick_model": "모델 선택…",
+    "no_model": "먼저 모델을 선택해줘",
+    "error_prefix": "에러",
+    "thought": "생각",
+    "attach": "첨부",
+    "attach_file": "파일 업로드",
+    "attach_url": "URL 추가",
+    "url_placeholder": "https://...",
+    "remove_attachment": "첨부 제거",
+    "attach_unsupported": "이 모델은 텍스트 전용이야"
   },
   "models": {
     "title": "설치된 모델",

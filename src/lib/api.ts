@@ -1,5 +1,17 @@
-import type { ChatMessage, OvoModelsResponse } from "../types/ovo";
+import type { OvoModelsResponse } from "../types/ovo";
 import type { SidecarPorts } from "../types/sidecar";
+
+// [START] OpenAI-compatible content-parts wire format — content may be a plain
+// string OR an array mixing text and image_url parts (multimodal messages).
+export type ChatContentPart =
+  | { type: "text"; text: string }
+  | { type: "image_url"; image_url: { url: string } };
+
+export interface ChatWireMessage {
+  role: "system" | "user" | "assistant";
+  content: string | ChatContentPart[];
+}
+// [END]
 
 export const DEFAULT_PORTS: SidecarPorts = {
   ollama: 11435,
@@ -30,7 +42,7 @@ export async function listModels(ports: SidecarPorts = DEFAULT_PORTS): Promise<O
 
 export interface ChatCompletionRequest {
   model: string;
-  messages: ChatMessage[];
+  messages: ChatWireMessage[];
   temperature?: number;
   max_tokens?: number;
 }

@@ -11,6 +11,8 @@ export interface QuantizationConfig {
   mode?: string;
 }
 
+export type ModelCapability = "text" | "vision";
+
 export interface OvoModel {
   repo_id: string;
   revision: string;
@@ -22,11 +24,17 @@ export interface OvoModel {
   quantization?: QuantizationConfig | string | null;
   hidden_size?: number | null;
   source: ModelSource;
+  capabilities: ModelCapability[];
 }
+
+export type ChatAttachment =
+  | { kind: "file"; id: string; file: File; previewDataUrl: string | null }
+  | { kind: "url"; id: string; url: string };
 
 export interface ChatMessage {
   role: "system" | "user" | "assistant";
   content: string;
+  attachments?: ChatAttachment[];
 }
 
 export interface OvoSettings {

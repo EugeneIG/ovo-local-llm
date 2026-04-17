@@ -34,7 +34,17 @@
     "send": "Send",
     "stop": "Stop",
     "thinking": "Thinking…",
-    "clear": "Clear conversation"
+    "clear": "Clear conversation",
+    "pick_model": "Pick model…",
+    "no_model": "Pick a model first",
+    "error_prefix": "Error",
+    "thought": "Thought",
+    "attach": "Attach",
+    "attach_file": "Upload file",
+    "attach_url": "Add URL",
+    "url_placeholder": "https://...",
+    "remove_attachment": "Remove attachment",
+    "attach_unsupported": "This model is text-only"
   },
   "models": {
     "title": "Installed models",
