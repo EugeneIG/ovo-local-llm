@@ -28,9 +28,15 @@ export interface OvoModel {
   max_context?: number | null;
 }
 
+// [START] Phase A — StoredAttachmentMeta re-exported from attachmentStorage for DB layer use.
+export type { StoredAttachmentMeta } from "../lib/attachmentStorage";
+import type { StoredAttachmentMeta } from "../lib/attachmentStorage";
+
 export type ChatAttachment =
-  | { kind: "file"; id: string; file: File; previewDataUrl: string | null }
-  | { kind: "url"; id: string; url: string };
+  | { kind: "file"; id: string; file: File; previewDataUrl: string | null; saved?: StoredAttachmentMeta }
+  | { kind: "url"; id: string; url: string }
+  | { kind: "stored"; id: string; meta: StoredAttachmentMeta };
+// [END]
 
 export interface ChatMessage {
   role: "system" | "user" | "assistant";

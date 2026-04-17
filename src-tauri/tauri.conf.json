@@ -20,6 +20,20 @@
         "minHeight": 600,
         "titleBarStyle": "Overlay",
         "hiddenTitle": true
+      },
+      {
+        "label": "pet",
+        "title": "OVO Pet",
+        "url": "/?window=pet",
+        "width": 320,
+        "height": 320,
+        "decorations": false,
+        "transparent": true,
+        "alwaysOnTop": true,
+        "resizable": false,
+        "skipTaskbar": true,
+        "visible": false,
+        "shadow": false
       }
     ],
     "security": {

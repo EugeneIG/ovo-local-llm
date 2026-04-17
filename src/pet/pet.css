@@ -1,0 +1,26 @@
+/* [START] Phase 7 — pet window styles. Imported only by PetApp.tsx.
+   Reset everything that main index.css / Tailwind preflight leaves opaque. */
+html,
+body,
+#root {
+  background: transparent !important;
+  background-color: transparent !important;
+  margin: 0;
+  padding: 0;
+  overflow: visible;
+  width: 100vw;
+  height: 100vh;
+  cursor: grab;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+body:active,
+#root:active {
+  cursor: grabbing;
+}
+
+::-webkit-scrollbar {
+  display: none;
+}
+/* [END] */

@@ -5,8 +5,16 @@
   "windows": ["main"],
   "permissions": [
     "core:default",
+    "core:window:allow-start-dragging",
+    "core:window:allow-set-focus",
+    "core:event:allow-listen",
+    "core:event:allow-emit",
     "sql:default",
     "sql:allow-execute",
-    "sql:allow-select"
+    "sql:allow-select",
+    "fs:allow-app-write-recursive",
+    "fs:allow-app-read-recursive",
+    "fs:allow-remove",
+    "fs:scope-app-recursive"
   ]
 }

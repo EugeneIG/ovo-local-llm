@@ -44,10 +44,37 @@ async fn sidecar_restart(app: AppHandle) -> Result<(), String> {
     Ok(())
 }
 
+// [START] Phase 7 — pet window lifecycle commands
+#[tauri::command]
+fn pet_show(app: AppHandle) -> Result<(), String> {
+    app.get_webview_window("pet")
+        .ok_or_else(|| "pet window not found".to_string())?
+        .show()
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn pet_hide(app: AppHandle) -> Result<(), String> {
+    app.get_webview_window("pet")
+        .ok_or_else(|| "pet window not found".to_string())?
+        .hide()
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn focus_main_window(app: AppHandle) -> Result<(), String> {
+    app.get_webview_window("main")
+        .ok_or_else(|| "main window not found".to_string())?
+        .set_focus()
+        .map_err(|e| e.to_string())
+}
+// [END]
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
+        .plugin(tauri_plugin_fs::init())
         .plugin(
             tauri_plugin_sql::Builder::default()
                 .add_migrations("sqlite:chats.sqlite", chats_migrations())
@@ -60,7 +87,10 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             app_info,
             sidecar_status,
-            sidecar_restart
+            sidecar_restart,
+            pet_show,
+            pet_hide,
+            focus_main_window
         ])
         .build(tauri::generate_context!())
         .expect("error while building OVO");

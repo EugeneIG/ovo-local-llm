@@ -6,6 +6,9 @@ import type {
   MessageRole,
   Session,
 } from "../types/ovo";
+// [START] Phase A — delete propagation helpers
+import { deleteAttachment } from "../lib/attachmentStorage";
+// [END]
 
 // [START] DB row shapes — SQLite returns INTEGER for booleans. We normalize
 // to real booleans at this boundary so the rest of the app deals with typed
@@ -184,8 +187,38 @@ export async function setCompacting(id: string, compacting: boolean): Promise<vo
   );
 }
 
+// [START] Phase A — helpers to extract stored attachment paths before row deletion
+function extractStoredPaths(atts: ChatAttachment[] | null): string[] {
+  if (!atts) return [];
+  return atts
+    .filter((a): a is Extract<ChatAttachment, { kind: "stored" }> => a.kind === "stored")
+    .map((a) => a.meta.relativePath);
+}
+
+async function deleteAttachmentsForMessages(messages: { attachments_json: string | null }[]): Promise<void> {
+  for (const row of messages) {
+    if (!row.attachments_json) continue;
+    try {
+      const parsed: unknown = JSON.parse(row.attachments_json);
+      if (!Array.isArray(parsed)) continue;
+      const paths = extractStoredPaths(parsed as ChatAttachment[]);
+      for (const p of paths) await deleteAttachment(p);
+    } catch {
+      // malformed json — ignore
+    }
+  }
+}
+// [END]
+
 export async function deleteSession(id: string): Promise<void> {
   const db = await getDb();
+  // [START] Phase A — delete stored attachment files before cascade delete
+  const rows = await db.select<{ attachments_json: string | null }[]>(
+    `SELECT attachments_json FROM messages WHERE session_id = $1 AND attachments_json IS NOT NULL`,
+    [id],
+  );
+  await deleteAttachmentsForMessages(rows);
+  // [END]
   // ON DELETE CASCADE clears messages automatically.
   await db.execute(`DELETE FROM sessions WHERE id = $1`, [id]);
 }
@@ -214,12 +247,16 @@ export interface AppendMessageInput {
 
 function serializeAttachments(atts: ChatAttachment[] | null | undefined): string | null {
   if (!atts || atts.length === 0) return null;
-  // [START] Skip File blobs — they won't survive JSON round-trip. We keep url
-  // attachments and preview data-urls (images) which are serializable.
+  // [START] Phase A — Serialize only DB-safe attachment kinds.
+  // stored: persists meta object (id, filename, mime, size, relativePath).
+  // url: persists as-is.
+  // file (in-flight): should have been converted to stored before reaching here;
+  //   if it slipped through, fall back to previewDataUrl as url kind.
   const persistable = atts
     .map((a): ChatAttachment | null => {
       if (a.kind === "url") return a;
-      // File attachments: persist only the preview data-url (if present).
+      if (a.kind === "stored") return a;
+      // file kind fallback — save the preview data-url if present.
       if (a.previewDataUrl) {
         return { kind: "url", id: a.id, url: a.previewDataUrl };
       }
@@ -303,11 +340,25 @@ export async function listLiveMessages(sessionId: string): Promise<Message[]> {
 
 export async function deleteMessage(id: string): Promise<void> {
   const db = await getDb();
+  // [START] Phase A — delete stored attachment files before row delete
+  const rows = await db.select<{ attachments_json: string | null }[]>(
+    `SELECT attachments_json FROM messages WHERE id = $1`,
+    [id],
+  );
+  await deleteAttachmentsForMessages(rows);
+  // [END]
   await db.execute(`DELETE FROM messages WHERE id = $1`, [id]);
 }
 
 export async function clearMessages(sessionId: string): Promise<void> {
   const db = await getDb();
+  // [START] Phase A — delete stored attachment files before bulk delete
+  const rows = await db.select<{ attachments_json: string | null }[]>(
+    `SELECT attachments_json FROM messages WHERE session_id = $1 AND attachments_json IS NOT NULL`,
+    [sessionId],
+  );
+  await deleteAttachmentsForMessages(rows);
+  // [END]
   await db.execute(`DELETE FROM messages WHERE session_id = $1`, [sessionId]);
   await db.execute(
     `UPDATE sessions SET context_tokens = 0, updated_at = $1 WHERE id = $2`,
