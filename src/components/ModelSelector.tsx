@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { ChevronDown, Check } from "lucide-react";
-import type { OvoModel } from "../types/ovo";
+import { ChevronDown, Check, Eye, Mic } from "lucide-react";
+import type { ModelCapability, OvoModel } from "../types/ovo";
 
 interface Props {
   models: OvoModel[];
@@ -13,6 +13,47 @@ interface Props {
 function truncate(s: string, max: number): string {
   return s.length > max ? `${s.slice(0, max - 1)}…` : s;
 }
+
+// [START] Capability badges — small pills for non-text modalities.
+const CAPABILITY_META: Record<
+  Exclude<ModelCapability, "text">,
+  { icon: typeof Eye; i18nKey: string }
+> = {
+  vision: { icon: Eye, i18nKey: "models.capability.vision" },
+  audio: { icon: Mic, i18nKey: "models.capability.audio" },
+};
+
+function CapabilityBadges({
+  capabilities,
+  compact = false,
+}: {
+  capabilities: ModelCapability[];
+  compact?: boolean;
+}) {
+  const { t } = useTranslation();
+  const keys: Array<Exclude<ModelCapability, "text">> = [];
+  if (capabilities.includes("vision")) keys.push("vision");
+  if (capabilities.includes("audio")) keys.push("audio");
+  if (keys.length === 0) return null;
+  return (
+    <span className="inline-flex gap-1 shrink-0">
+      {keys.map((k) => {
+        const { icon: Icon, i18nKey } = CAPABILITY_META[k];
+        return (
+          <span
+            key={k}
+            className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-[#F4D4B8]/70 text-[#5C3B2E] text-[10px] leading-none"
+            title={t(i18nKey)}
+          >
+            <Icon className="w-2.5 h-2.5" aria-hidden />
+            {!compact && <span>{t(i18nKey)}</span>}
+          </span>
+        );
+      })}
+    </span>
+  );
+}
+// [END]
 
 export function ModelSelector({ models, value, onChange, disabled }: Props) {
   const { t } = useTranslation();
@@ -41,6 +82,7 @@ export function ModelSelector({ models, value, onChange, disabled }: Props) {
         <span className="truncate">
           {selected ? truncate(selected.repo_id, 48) : t("chat.pick_model")}
         </span>
+        {selected && <CapabilityBadges capabilities={selected.capabilities} compact />}
         <ChevronDown className="w-4 h-4 shrink-0 opacity-70" aria-hidden />
       </button>
       {open && (
@@ -69,8 +111,11 @@ export function ModelSelector({ models, value, onChange, disabled }: Props) {
                       />
                       <div className="flex-1 min-w-0">
                         <div className="truncate text-[#2C1810]">{m.repo_id}</div>
-                        <div className="text-[11px] text-[#8B4432] mt-0.5">
-                          {t(`models.source.${m.source}`)}
+                        <div className="flex items-center gap-2 mt-0.5">
+                          <span className="text-[11px] text-[#8B4432]">
+                            {t(`models.source.${m.source}`)}
+                          </span>
+                          <CapabilityBadges capabilities={m.capabilities} />
                         </div>
                       </div>
                     </button>

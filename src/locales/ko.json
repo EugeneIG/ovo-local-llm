@@ -55,6 +55,10 @@
       "hf": "HuggingFace",
       "lmstudio": "LM Studio"
     },
+    "capability": {
+      "vision": "비전",
+      "audio": "오디오"
+    },
     "size": "크기",
     "quant": "양자화",
     "arch": "아키텍처"

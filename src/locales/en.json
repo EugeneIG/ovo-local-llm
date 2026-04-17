@@ -55,6 +55,10 @@
       "hf": "HuggingFace",
       "lmstudio": "LM Studio"
     },
+    "capability": {
+      "vision": "Vision",
+      "audio": "Audio"
+    },
     "size": "Size",
     "quant": "Quantization",
     "arch": "Architecture"

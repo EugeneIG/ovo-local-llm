@@ -11,7 +11,7 @@ export interface QuantizationConfig {
   mode?: string;
 }
 
-export type ModelCapability = "text" | "vision";
+export type ModelCapability = "text" | "vision" | "audio";
 
 export interface OvoModel {
   repo_id: string;
