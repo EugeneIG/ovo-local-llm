@@ -181,7 +181,10 @@
       "mode_block_label": "차단 (기존 동작)",
       "mode_block_help": "스트리밍 중에는 입력창이 비활성화되어 메시지를 보낼 수 없어",
       "sound_label": "답변 완료 알림음",
-      "sound_help": "모델이 답변을 마치면 짧은 부엉이 소리를 재생해"
+      "sound_help": "모델이 답변을 마치면 짧은 부엉이 소리를 재생해",
+      "user_honorific_label": "사용자 호칭",
+      "user_honorific_placeholder": "오빠",
+      "user_honorific_help": "모델이 너를 부르는 방식. 비워두면 자연스러운 호칭 안 씀. 프로필에 따로 설정된 경우 그게 우선."
     },
     "sampling": {
       "section_title": "샘플링 파라미터",

@@ -539,6 +539,8 @@ export function SettingsPane() {
   const setRepetitionPenalty = useChatSettingsStore((s) => s.setRepetitionPenalty);
   const setMaxTokens = useChatSettingsStore((s) => s.setMaxTokens);
   const resetSampling = useChatSettingsStore((s) => s.resetSampling);
+  const userHonorific = useChatSettingsStore((s) => s.user_honorific);
+  const setUserHonorific = useChatSettingsStore((s) => s.setUserHonorific);
   // [END]
 
   // Model overrides store
@@ -632,6 +634,25 @@ export function SettingsPane() {
           <span className="text-sm text-ovo-text">{t("settings.chat_input.sound_label")}</span>
         </label>
         <p className="ml-6 text-xs text-ovo-muted">{t("settings.chat_input.sound_help")}</p>
+
+        {/* [START] Phase 6.4 — global user honorific */}
+        <div className="mt-5 flex flex-col gap-1">
+          <label className="text-sm text-ovo-text">
+            {t("settings.chat_input.user_honorific_label")}
+          </label>
+          <input
+            type="text"
+            value={userHonorific}
+            onChange={(e) => setUserHonorific(e.target.value)}
+            placeholder={t("settings.chat_input.user_honorific_placeholder")}
+            maxLength={32}
+            className="w-48 text-sm border border-ovo-border rounded px-2 py-1 bg-ovo-surface-solid text-ovo-text placeholder:text-ovo-muted/50"
+          />
+          <p className="text-[11px] text-ovo-muted">
+            {t("settings.chat_input.user_honorific_help")}
+          </p>
+        </div>
+        {/* [END] */}
       </CollapsibleSection>
       {/* [END] */}
 

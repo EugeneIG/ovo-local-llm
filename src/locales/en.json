@@ -181,7 +181,10 @@
       "mode_block_label": "Block (legacy)",
       "mode_block_help": "Input is disabled while the assistant is streaming. No messages can be sent until it finishes.",
       "sound_label": "Reply-complete sound",
-      "sound_help": "Play a short owl hoot when the assistant finishes responding."
+      "sound_help": "Play a short owl hoot when the assistant finishes responding.",
+      "user_honorific_label": "How to address you",
+      "user_honorific_placeholder": "e.g. Captain",
+      "user_honorific_help": "How the assistant refers to you. Leave empty to skip the honorific. Profile-specific overrides take precedence."
     },
     "sampling": {
       "section_title": "Sampling parameters",

@@ -23,6 +23,11 @@ export interface ChatSettings {
   repetition_penalty: number; // 1.0–1.5, default 1.1
   max_tokens: number | null; // null = unlimited, default null
   // [END]
+  // [START] Phase 6.4 — global user honorific (how the model should address
+  // the user). Profiles can override this; defaults to empty ("" = no
+  // injected honorific line).
+  user_honorific: string;
+  // [END]
 }
 
 interface ChatSettingsState extends ChatSettings {
@@ -34,6 +39,7 @@ interface ChatSettingsState extends ChatSettings {
   setTopP: (v: number) => void;
   setRepetitionPenalty: (v: number) => void;
   setMaxTokens: (v: number | null) => void;
+  setUserHonorific: (v: string) => void;
   resetSampling: () => void;
   load: () => void;
 }
@@ -47,6 +53,7 @@ const DEFAULTS: ChatSettings = {
   top_p: 0.95,
   repetition_penalty: 1.1,
   max_tokens: null,
+  user_honorific: "",
 };
 
 function snapshot(s: ChatSettingsState): ChatSettings {
@@ -59,6 +66,7 @@ function snapshot(s: ChatSettingsState): ChatSettings {
     top_p: s.top_p,
     repetition_penalty: s.repetition_penalty,
     max_tokens: s.max_tokens,
+    user_honorific: s.user_honorific,
   };
 }
 
@@ -126,6 +134,10 @@ export const useChatSettingsStore = create<ChatSettingsState>((set, get) => {
             : typeof stored.max_tokens === "number" && stored.max_tokens > 0
               ? Math.round(stored.max_tokens)
               : DEFAULTS.max_tokens,
+        user_honorific:
+          typeof stored.user_honorific === "string"
+            ? stored.user_honorific
+            : DEFAULTS.user_honorific,
       };
       set(next);
     },
@@ -160,6 +172,10 @@ export const useChatSettingsStore = create<ChatSettingsState>((set, get) => {
     },
     setMaxTokens: (v) => {
       set({ max_tokens: v === null ? null : Math.max(1, Math.round(v)) });
+      persistCurrent();
+    },
+    setUserHonorific: (v) => {
+      set({ user_honorific: v.slice(0, 32) });
       persistCurrent();
     },
     resetSampling: () => {

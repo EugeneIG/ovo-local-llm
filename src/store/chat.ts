@@ -411,11 +411,14 @@ export const useChatStore = create<ChatStoreState>((set, get) => {
       // below. Profile system blocks merge into the same wire[0] system slot
       // as project context / MCP tools so there's exactly one system message.
       const activeProfile = useModelProfilesStore.getState().getActive();
+      const globalHonorific = useChatSettingsStore.getState().user_honorific.trim();
+      const effectiveHonorific =
+        (activeProfile?.user_honorific?.trim() || globalHonorific).trim();
       const profileLines: string[] = [];
       if (activeProfile?.persona) profileLines.push(activeProfile.persona);
-      if (activeProfile?.user_honorific) {
+      if (effectiveHonorific) {
         profileLines.push(
-          `사용자를 부를 때는 "${activeProfile.user_honorific}"라고 해.`,
+          `사용자를 부를 때는 "${effectiveHonorific}"라고 해.`,
         );
       }
       if (activeProfile?.system_prompt_extra) {
