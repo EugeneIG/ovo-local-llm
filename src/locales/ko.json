@@ -60,9 +60,33 @@
       "vision": "비전",
       "audio": "오디오"
     },
+    "perf": {
+      "tokens_per_sec": "{{count}} t/s",
+      "runs": "{{count}}회 실행",
+      "ttft": "첫 토큰: {{ms}} ms",
+      "last_used": "최근: {{when}}",
+      "recently_used_group": "최근 사용"
+    },
     "size": "크기",
     "quant": "양자화",
-    "arch": "아키텍처"
+    "arch": "아키텍처",
+    "rec": {
+      "fastest": "가장 빠름",
+      "most_used": "가장 많이 쓴",
+      "best_value": "효율 최고"
+    },
+    "download": {
+      "section_title": "모델 다운로드",
+      "search_placeholder": "HuggingFace 모델 검색 (예: mlx-community, bf16, q4)",
+      "tip": "Tip: MLX 모델은 mlx-community 또는 bf16/q4 키워드로 찾아봐",
+      "download_btn": "다운로드",
+      "downloading": "다운로드 중…",
+      "installed": "설치됨",
+      "download_error": "다운로드 실패: {{error}}",
+      "download_started": "{{repo}} 다운로드 시작",
+      "download_done": "{{repo}} 설치 완료",
+      "empty_results": "검색 결과가 없어"
+    }
   },
   "settings": {
     "language": "언어",
@@ -77,6 +101,11 @@
     "expose_to_network": "네트워크 공개",
     "claude_integration": "Claude 연동",
     "pet_enabled": "데스크톱 펫 활성화",
+    "pet": {
+      "section_title": "데스크탑 펫",
+      "enable_label": "데스크탑 부엉이",
+      "enable_help": "화면 위에 떠다니는 부엉이 마스코트"
+    },
     "chat_input": {
       "section_title": "대화 입력",
       "mode_queue_label": "대기열 (기본)",
@@ -84,7 +113,22 @@
       "mode_interrupt_label": "끊고 보내기",
       "mode_interrupt_help": "스트리밍 중 메시지를 보내면 현재 답변을 중단하고 즉시 새 메시지를 전송해",
       "mode_block_label": "차단 (기존 동작)",
-      "mode_block_help": "스트리밍 중에는 입력창이 비활성화되어 메시지를 보낼 수 없어"
+      "mode_block_help": "스트리밍 중에는 입력창이 비활성화되어 메시지를 보낼 수 없어",
+      "sound_label": "답변 완료 알림음",
+      "sound_help": "모델이 답변을 마치면 짧은 부엉이 소리를 재생해"
+    },
+    "advanced": {
+      "section_title": "고급 / 외부 연결",
+      "description": "다른 앱(Cursor, Continue.dev, Zed...)에서 OVO를 로컬 LLM 서버로 사용할 수 있어. 아래 URL을 각 툴의 base URL로 지정해줘.",
+      "default_model_label": "기본 모델 (라우터 기본값)",
+      "default_model_auto": "(자동 — 최근 사용)",
+      "endpoint_copy": "복사",
+      "endpoint_copied": "클립보드에 복사했어!",
+      "guides_title": "툴별 설정 가이드",
+      "guide_cursor": "Cursor: Settings → Models → Add custom model → base URL http://localhost:11436/v1, API key는 아무 값이나",
+      "guide_continue": "Continue.dev (VS Code): config.json → models[].apiBase = http://localhost:11436/v1",
+      "guide_zed": "Zed: settings.json → language_models.openai.api_url = http://localhost:11436/v1",
+      "guide_generic": "OpenAI SDK (범용): OpenAI(base_url='http://localhost:11436/v1', api_key='none')"
     },
     "context": {
       "section_title": "컨텍스트 관리",
@@ -103,6 +147,9 @@
       "overrides_auto_detected": "자동 감지",
       "overrides_confirm_delete": "이 override를 삭제할까?"
     }
+  },
+  "pet": {
+    "double_click_hint": "더블클릭으로 앱 열기"
   },
   "recents": {
     "title": "최근 대화",

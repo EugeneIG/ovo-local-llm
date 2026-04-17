@@ -3,9 +3,12 @@ import type { SidecarPorts } from "../types/sidecar";
 
 // [START] OpenAI-compatible content-parts wire format — content may be a plain
 // string OR an array mixing text and image_url parts (multimodal messages).
+// [START] Phase B — audio input part for audio-capable models (Phi-4-multimodal, Qwen2-Audio)
 export type ChatContentPart =
   | { type: "text"; text: string }
-  | { type: "image_url"; image_url: { url: string } };
+  | { type: "image_url"; image_url: { url: string } }
+  | { type: "input_audio"; input_audio: { data: string; format: string } };
+// [END]
 
 export interface ChatWireMessage {
   role: "system" | "user" | "assistant";
@@ -129,6 +132,67 @@ export async function* streamChat(
     }
   }
 }
+
+// [START] HuggingFace model search + download API wrappers
+// Shape mirrors hf_downloader.py SearchResult / DownloadTask dataclasses.
+// status uses "downloading" (not "running") — matches actual sidecar literal.
+export interface HfSearchResult {
+  repo_id: string;
+  downloads?: number;
+  likes?: number;
+  last_modified?: string | null;
+  tags?: string[];
+}
+
+export interface DownloadTask {
+  task_id: string;
+  repo_id: string;
+  status: "pending" | "downloading" | "done" | "error";
+  error: string | null;
+  snapshot_path: string | null;
+  started_at: number;
+  finished_at: number | null;
+}
+
+export async function searchModels(
+  q: string,
+  limit = 25,
+  ports: SidecarPorts = DEFAULT_PORTS,
+): Promise<HfSearchResult[]> {
+  const url = `${nativeBase(ports)}/ovo/models/search?q=${encodeURIComponent(q)}&limit=${limit}`;
+  const resp = await fetch(url);
+  const data = await jsonOrThrow<{ query: string; results: HfSearchResult[] }>(resp);
+  return data.results;
+}
+
+export async function startDownload(
+  repo_id: string,
+  ports: SidecarPorts = DEFAULT_PORTS,
+): Promise<DownloadTask> {
+  const resp = await fetch(`${nativeBase(ports)}/ovo/models/download`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ repo_id }),
+  });
+  return jsonOrThrow<DownloadTask>(resp);
+}
+
+export async function getDownload(
+  task_id: string,
+  ports: SidecarPorts = DEFAULT_PORTS,
+): Promise<DownloadTask> {
+  const resp = await fetch(`${nativeBase(ports)}/ovo/download/${task_id}`);
+  return jsonOrThrow<DownloadTask>(resp);
+}
+
+export async function listDownloads(
+  ports: SidecarPorts = DEFAULT_PORTS,
+): Promise<DownloadTask[]> {
+  const resp = await fetch(`${nativeBase(ports)}/ovo/downloads`);
+  const data = await jsonOrThrow<{ tasks: DownloadTask[] }>(resp);
+  return data.tasks;
+}
+// [END]
 
 // [START] /ovo/count_tokens + /ovo/summarize — native sidecar endpoints used
 // by auto-compact engine and session token preview.

@@ -60,9 +60,33 @@
       "vision": "Vision",
       "audio": "Audio"
     },
+    "perf": {
+      "tokens_per_sec": "{{count}} t/s",
+      "runs": "{{count}} runs",
+      "ttft": "First token: {{ms}} ms",
+      "last_used": "Last: {{when}}",
+      "recently_used_group": "Recently used"
+    },
     "size": "Size",
     "quant": "Quantization",
-    "arch": "Architecture"
+    "arch": "Architecture",
+    "rec": {
+      "fastest": "Fastest",
+      "most_used": "Most used",
+      "best_value": "Best value"
+    },
+    "download": {
+      "section_title": "Download Models",
+      "search_placeholder": "Search HuggingFace (try mlx-community, bf16, q4)",
+      "tip": "Tip: look for mlx-community or bf16/q4 suffixes for MLX-ready weights",
+      "download_btn": "Download",
+      "downloading": "Downloading…",
+      "installed": "Installed",
+      "download_error": "Download failed: {{error}}",
+      "download_started": "Started downloading {{repo}}",
+      "download_done": "{{repo}} installed",
+      "empty_results": "No results"
+    }
   },
   "settings": {
     "language": "Language",
@@ -77,6 +101,11 @@
     "expose_to_network": "Expose to network",
     "claude_integration": "Claude integration",
     "pet_enabled": "Desktop pet",
+    "pet": {
+      "section_title": "Desktop Pet",
+      "enable_label": "Desktop owl",
+      "enable_help": "Floating owl mascot on your desktop"
+    },
     "chat_input": {
       "section_title": "Chat Input",
       "mode_queue_label": "Queue (default)",
@@ -84,7 +113,22 @@
       "mode_interrupt_label": "Interrupt & send",
       "mode_interrupt_help": "Sending during streaming stops the current response immediately and sends your new message.",
       "mode_block_label": "Block (legacy)",
-      "mode_block_help": "Input is disabled while the assistant is streaming. No messages can be sent until it finishes."
+      "mode_block_help": "Input is disabled while the assistant is streaming. No messages can be sent until it finishes.",
+      "sound_label": "Reply-complete sound",
+      "sound_help": "Play a short owl hoot when the assistant finishes responding."
+    },
+    "advanced": {
+      "section_title": "Advanced / External Connections",
+      "description": "Point external tools (Cursor, Continue.dev, Zed, …) at OVO to use it as a local LLM server. Set the URLs below as the base URL in each tool.",
+      "default_model_label": "Default model (router default)",
+      "default_model_auto": "(Auto — most recent)",
+      "endpoint_copy": "Copy",
+      "endpoint_copied": "Copied to clipboard!",
+      "guides_title": "Tool Setup Guides",
+      "guide_cursor": "Cursor: Settings → Models → Add custom model → base URL http://localhost:11436/v1, API key: anything",
+      "guide_continue": "Continue.dev (VS Code): config.json → models[].apiBase = http://localhost:11436/v1",
+      "guide_zed": "Zed: settings.json → language_models.openai.api_url = http://localhost:11436/v1",
+      "guide_generic": "Any OpenAI SDK: OpenAI(base_url='http://localhost:11436/v1', api_key='none')"
     },
     "context": {
       "section_title": "Context Management",
@@ -103,6 +147,9 @@
       "overrides_auto_detected": "Auto-detected",
       "overrides_confirm_delete": "Delete this override?"
     }
+  },
+  "pet": {
+    "double_click_hint": "Double-click to focus app"
   },
   "recents": {
     "title": "Recents",
