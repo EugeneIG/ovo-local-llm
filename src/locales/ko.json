@@ -93,6 +93,15 @@
       "tool_error": "도구 실행 실패: {{error}}"
     },
     "repeat_limit": "⚠️ 해당 모델은 요청하신 기능의 제한이 있습니다. 다른 모델을 이용해주세요.",
+    "mode": {
+      "label": "도구 모드",
+      "bypass": "Bypass",
+      "ask": "Ask",
+      "plan": "Plan",
+      "bypass_hint": "⚡ 자동 승인 — 확인 없이 바로 실행 (기본)",
+      "ask_hint": "💬 호출 전 확인 — 매번 승인 다이얼로그",
+      "plan_hint": "📋 계획만 — 실행 안 하고 가짜 결과로 추론"
+    },
     "drop": {
       "accept": "여기에 놓으면 첨부돼",
       "accept_hint": "이미지/오디오 파일 지원",

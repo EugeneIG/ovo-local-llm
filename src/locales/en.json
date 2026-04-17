@@ -93,6 +93,15 @@
       "tool_error": "Tool execution failed: {{error}}"
     },
     "repeat_limit": "⚠️ This model hit a repetition limit. Please try a different model.",
+    "mode": {
+      "label": "Tool mode",
+      "bypass": "Bypass",
+      "ask": "Ask",
+      "plan": "Plan",
+      "bypass_hint": "⚡ Auto-approve — execute without asking (default)",
+      "ask_hint": "💬 Confirm before call — dialog every time",
+      "plan_hint": "📋 Plan only — don't run, synthesize a stub result"
+    },
     "drop": {
       "accept": "Drop to attach",
       "accept_hint": "Images and audio files supported",
