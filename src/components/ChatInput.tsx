@@ -3,6 +3,18 @@ import { useTranslation } from "react-i18next";
 import { Send, Square, Plus, Upload, Link as LinkIcon } from "lucide-react";
 import type { ChatAttachment, ModelCapability } from "../types/ovo";
 import { AttachmentChip } from "./AttachmentChip";
+// [START] Phase 6.4 — slash command popup
+import {
+  shouldShowSlashMenu,
+  filterSlashCommands,
+  type SlashCommand,
+  type SlashCommandContext,
+} from "../lib/slashCommands";
+import { SlashCommandPopup } from "./SlashCommandPopup";
+import { useSessionsStore } from "../store/sessions";
+import { useModelProfilesStore } from "../store/model_profiles";
+import { useToastsStore } from "../store/toasts";
+// [END]
 
 interface Props {
   onSend: (text: string, attachments: ChatAttachment[]) => void;
@@ -100,7 +112,97 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput(
     setAttachments([]);
   };
 
+  // [START] Phase 6.4 — slash-command menu state
+  const [slashFiltered, setSlashFiltered] = useState<SlashCommand[]>([]);
+  const [slashIndex, setSlashIndex] = useState(0);
+  const slashOpen = slashFiltered.length > 0;
+
+  useEffect(() => {
+    const { show, token } = shouldShowSlashMenu(value);
+    if (!show) {
+      setSlashFiltered([]);
+      return;
+    }
+    const next = filterSlashCommands(token);
+    setSlashFiltered(next);
+    setSlashIndex((prev) => Math.min(prev, Math.max(0, next.length - 1)));
+  }, [value]);
+
+  function buildSlashContext(): SlashCommandContext {
+    return {
+      clearChat: () => useSessionsStore.getState().clearCurrentMessages(),
+      cycleProfile: () => {
+        const store = useModelProfilesStore.getState();
+        const idx = store.profiles.findIndex((p) => p.id === store.activeId);
+        const nextProfile =
+          store.profiles[(idx + 1) % store.profiles.length];
+        if (nextProfile) {
+          store.setActive(nextProfile.id);
+          useToastsStore.getState().push({
+            kind: "info",
+            message: `${nextProfile.emoji ?? ""} ${nextProfile.name}`,
+          });
+        }
+      },
+      openPane: (pane) => {
+        window.dispatchEvent(
+          new CustomEvent("ovo:navigate", { detail: pane }),
+        );
+      },
+    };
+  }
+
+  function executeSlash(cmd: SlashCommand) {
+    const { args } = shouldShowSlashMenu(value);
+    if (cmd.placeholder) {
+      useToastsStore.getState().push({
+        kind: "info",
+        message: `${cmd.name} — ${cmd.description}`,
+      });
+      setValue("");
+      return;
+    }
+    if (cmd.kind === "template" && cmd.template) {
+      setValue(cmd.template(args));
+      return;
+    }
+    if (cmd.kind === "action" && cmd.run) {
+      cmd.run(buildSlashContext(), args);
+      setValue("");
+      return;
+    }
+    setValue("");
+  }
+  // [END]
+
   const onKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
+    // [START] slash-menu keyboard nav takes priority over submit
+    if (slashOpen) {
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        setSlashIndex((i) => Math.min(i + 1, slashFiltered.length - 1));
+        return;
+      }
+      if (e.key === "ArrowUp") {
+        e.preventDefault();
+        setSlashIndex((i) => Math.max(i - 1, 0));
+        return;
+      }
+      if (e.key === "Escape") {
+        e.preventDefault();
+        setSlashFiltered([]);
+        return;
+      }
+      if ((e.key === "Enter" || e.key === "Tab") && !e.nativeEvent.isComposing) {
+        const cmd = slashFiltered[slashIndex];
+        if (cmd) {
+          e.preventDefault();
+          executeSlash(cmd);
+          return;
+        }
+      }
+    }
+    // [END]
     if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
       e.preventDefault();
       submit();
@@ -161,7 +263,17 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput(
   };
 
   return (
-    <div className="p-3 bg-ovo-surface border-t border-ovo-border">
+    <div className="relative p-3 bg-ovo-surface border-t border-ovo-border">
+      {/* [START] Phase 6.4 — slash command popup (floats above the input) */}
+      {slashOpen && (
+        <SlashCommandPopup
+          items={slashFiltered}
+          index={slashIndex}
+          onHover={(i) => setSlashIndex(i)}
+          onSelect={(cmd) => executeSlash(cmd)}
+        />
+      )}
+      {/* [END] */}
       {/* [START] queue badge — shown when messages are waiting */}
       {queueCount > 0 && (
         <div className="mb-2 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-ovo-bg border border-ovo-border text-xs text-ovo-muted">

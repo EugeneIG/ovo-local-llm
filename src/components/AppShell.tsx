@@ -71,6 +71,16 @@ export function AppShell() {
     // [START] Phase 6.4 — model profiles bootstrap
     useModelProfilesStore.getState().load();
     // [END]
+    // [START] Phase 6.4 — slash command /wiki /models /settings nav listener
+    const onNav = (e: Event) => {
+      const target = (e as CustomEvent<NavKey>).detail;
+      if (typeof target === "string") setActive(target);
+    };
+    window.addEventListener("ovo:navigate", onNav);
+    // [END]
+    return () => {
+      window.removeEventListener("ovo:navigate", onNav);
+    };
   }, []);
   // [END]
 
