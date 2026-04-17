@@ -2,6 +2,32 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ─── body-level animations ─────────────────────────────── */
+
+@keyframes ovo-owl-breathe {
+  0%, 100% { transform: scaleY(1) translateY(0); }
+  50% { transform: scaleY(1.02) translateY(-1px); }
+}
+
+@keyframes ovo-owl-wobble {
+  0%, 100% { transform: rotate(0deg); }
+  25% { transform: rotate(1.2deg); }
+  75% { transform: rotate(-1.2deg); }
+}
+
+@keyframes ovo-owl-bounce {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-6px); }
+}
+
+@keyframes ovo-owl-glitch {
+  0%, 100% { transform: translateX(0); }
+  20% { transform: translateX(-3px) skewX(-2deg); }
+  40% { transform: translateX(3px) skewX(2deg); }
+  60% { transform: translateX(-2px); }
+  80% { transform: translateX(2px); }
+}
+
 @keyframes ovo-owl-shake {
   0%, 100% { transform: rotate(-6deg) translateY(-2px); }
   25% { transform: rotate(5deg) translateY(1px); }
@@ -9,10 +35,90 @@
   75% { transform: rotate(6deg) translateY(2px); }
 }
 
-.ovo-owl-struggling {
-  animation: ovo-owl-shake 0.28s ease-in-out infinite;
-  transform-origin: 50% 85%;
+@keyframes ovo-owl-pop {
+  0% { transform: scale(0.9); }
+  40% { transform: scale(1.08); }
+  70% { transform: scale(0.97); }
+  100% { transform: scale(1); }
 }
+
+.ovo-owl-idle       { animation: ovo-owl-breathe 3.2s ease-in-out infinite; transform-origin: 50% 100%; }
+.ovo-owl-thinking   { animation: ovo-owl-wobble  3.6s ease-in-out infinite; transform-origin: 50% 90%; }
+.ovo-owl-typing     { animation: ovo-owl-wobble  0.9s ease-in-out infinite; transform-origin: 50% 90%; }
+.ovo-owl-happy      { animation: ovo-owl-bounce  0.9s ease-in-out infinite; transform-origin: 50% 100%; }
+.ovo-owl-sleeping   { animation: ovo-owl-breathe 4.5s ease-in-out infinite; transform-origin: 50% 100%; }
+.ovo-owl-surprised  { animation: ovo-owl-pop 0.5s ease-out 1 both, ovo-owl-breathe 2s ease-in-out 0.5s infinite; transform-origin: 50% 100%; }
+.ovo-owl-error      { animation: ovo-owl-glitch 0.4s ease-in-out infinite; transform-origin: 50% 50%; }
+.ovo-owl-struggling { animation: ovo-owl-shake 0.28s ease-in-out infinite; transform-origin: 50% 85%; }
+
+/* ─── sub-element animations ────────────────────────────── */
+
+@keyframes ovo-owl-blink {
+  0%, 90%, 100% { transform: scaleY(1); }
+  93%, 97% { transform: scaleY(0.1); }
+}
+
+.ovo-owl-eye-blink {
+  animation: ovo-owl-blink 5s ease-in-out infinite;
+  transform-origin: 50% 50%;
+  transform-box: fill-box;
+}
+
+@keyframes ovo-owl-thought-float {
+  0% { opacity: 0; transform: translateY(10px) scale(0.7); }
+  30% { opacity: 1; transform: translateY(0) scale(1); }
+  100% { opacity: 0; transform: translateY(-14px) scale(0.9); }
+}
+
+.ovo-owl-thought { animation: ovo-owl-thought-float 2.4s ease-in-out infinite; transform-box: fill-box; transform-origin: 50% 100%; }
+.ovo-owl-thought-2 { animation-delay: 0.6s; }
+.ovo-owl-thought-3 { animation-delay: 1.2s; }
+
+@keyframes ovo-owl-zzz-rise {
+  0% { opacity: 0; transform: translate(0, 0) rotate(-6deg) scale(0.6); }
+  20% { opacity: 1; }
+  100% { opacity: 0; transform: translate(14px, -28px) rotate(10deg) scale(1.2); }
+}
+
+.ovo-owl-zzz-1 { animation: ovo-owl-zzz-rise 2.8s ease-in-out infinite; transform-box: fill-box; transform-origin: 50% 100%; }
+.ovo-owl-zzz-2 { animation: ovo-owl-zzz-rise 2.8s ease-in-out infinite 0.9s; transform-box: fill-box; transform-origin: 50% 100%; }
+
+@keyframes ovo-owl-iris-dart {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-6px); }
+  60% { transform: translateX(6px); }
+  80% { transform: translateX(-3px); }
+}
+
+.ovo-owl-iris-typing { animation: ovo-owl-iris-dart 1.3s ease-in-out infinite; transform-box: fill-box; transform-origin: 50% 50%; }
+
+@keyframes ovo-owl-sparkle {
+  0%, 100% { opacity: 0; transform: scale(0.6); }
+  50% { opacity: 1; transform: scale(1.15); }
+}
+
+.ovo-owl-sparkle-1 { animation: ovo-owl-sparkle 1.4s ease-in-out infinite; transform-box: fill-box; transform-origin: 50% 50%; }
+.ovo-owl-sparkle-2 { animation: ovo-owl-sparkle 1.4s ease-in-out infinite 0.7s; transform-box: fill-box; transform-origin: 50% 50%; }
+
+@keyframes ovo-owl-tap-l {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-4px); }
+}
+
+@keyframes ovo-owl-tap-r {
+  0%, 100% { transform: translateY(-4px); }
+  50% { transform: translateY(0); }
+}
+
+.ovo-owl-typing-arm-l { animation: ovo-owl-tap-l 0.26s ease-in-out infinite; transform-box: fill-box; transform-origin: 50% 0%; }
+.ovo-owl-typing-arm-r { animation: ovo-owl-tap-r 0.26s ease-in-out infinite; transform-box: fill-box; transform-origin: 50% 0%; }
+
+@keyframes ovo-owl-flutter {
+  0%, 100% { opacity: 0.9; transform: translateY(0); }
+  50% { opacity: 0.4; transform: translateY(-4px); }
+}
+
+.ovo-owl-flutter { animation: ovo-owl-flutter 0.18s ease-in-out infinite; transform-box: fill-box; transform-origin: 50% 50%; }
 
 :root {
   font-family: Inter, -apple-system, system-ui, sans-serif;

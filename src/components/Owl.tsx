@@ -55,8 +55,8 @@ function Eyes({ state }: { state: OwlState }) {
         <circle cx="390" cy="225" r="48" {...ringProps} />
         <path d="M 264 225 Q 290 240 316 225" stroke={PALETTE.iris} strokeWidth="5" fill="none" strokeLinecap="round" />
         <path d="M 364 225 Q 390 240 416 225" stroke={PALETTE.iris} strokeWidth="5" fill="none" strokeLinecap="round" />
-        <text x="460" y="160" fill={PALETTE.eyeStroke} fontSize="28" fontFamily="serif" fontWeight="bold">z</text>
-        <text x="482" y="132" fill={PALETTE.eyeStroke} fontSize="36" fontFamily="serif" fontWeight="bold">Z</text>
+        <text x="460" y="160" fill={PALETTE.eyeStroke} fontSize="28" fontFamily="serif" fontWeight="bold" className="ovo-owl-zzz-1">z</text>
+        <text x="482" y="132" fill={PALETTE.eyeStroke} fontSize="36" fontFamily="serif" fontWeight="bold" className="ovo-owl-zzz-2">Z</text>
       </g>
     );
   }
@@ -105,19 +105,27 @@ function Eyes({ state }: { state: OwlState }) {
   const irisR = state === "surprised" ? 28 : state === "typing" ? 18 : 22;
   const irisOffsetY = state === "thinking" ? -8 : 0;
   const pupilR = state === "surprised" ? 4 : state === "typing" ? 5 : 7;
+  const irisClass = state === "typing" ? "ovo-owl-iris-typing" : "";
+  const eyeClass = state === "idle" ? "ovo-owl-eye-blink" : "";
 
   return (
     <g>
       <circle cx="290" cy="225" r="48" {...ringProps} />
       <circle cx="390" cy="225" r="48" {...ringProps} />
-      <circle cx="295" cy={230 + irisOffsetY} r={irisR} fill={PALETTE.iris} />
-      <circle cx="385" cy={230 + irisOffsetY} r={irisR} fill={PALETTE.iris} />
-      <circle cx="302" cy={222 + irisOffsetY} r={pupilR} fill="#FFFFFF" />
-      <circle cx="392" cy={222 + irisOffsetY} r={pupilR} fill="#FFFFFF" />
-      <circle cx="287" cy={237 + irisOffsetY} r="3" fill="#FFFFFF" />
-      <circle cx="377" cy={237 + irisOffsetY} r="3" fill="#FFFFFF" />
+      <g className={eyeClass}>
+        <g className={irisClass}>
+          <circle cx="295" cy={230 + irisOffsetY} r={irisR} fill={PALETTE.iris} />
+          <circle cx="302" cy={222 + irisOffsetY} r={pupilR} fill="#FFFFFF" />
+          <circle cx="287" cy={237 + irisOffsetY} r="3" fill="#FFFFFF" />
+        </g>
+        <g className={irisClass}>
+          <circle cx="385" cy={230 + irisOffsetY} r={irisR} fill={PALETTE.iris} />
+          <circle cx="392" cy={222 + irisOffsetY} r={pupilR} fill="#FFFFFF" />
+          <circle cx="377" cy={237 + irisOffsetY} r="3" fill="#FFFFFF" />
+        </g>
+      </g>
       {state === "typing" && (
-        <path d="M 440 190 Q 446 202 440 212 Q 434 202 440 190 Z" fill="#5FA8D3" opacity="0.8" />
+        <path d="M 440 190 Q 446 202 440 212 Q 434 202 440 190 Z" fill="#5FA8D3" opacity="0.8" className="ovo-owl-flutter" />
       )}
     </g>
   );
@@ -127,20 +135,112 @@ function Accessory({ state }: { state: OwlState }) {
   if (state === "thinking") {
     return (
       <g>
-        <circle cx="520" cy="120" r="12" fill={PALETTE.eyeRing} stroke={PALETTE.eyeStroke} strokeWidth="2" />
-        <circle cx="540" cy="90" r="18" fill={PALETTE.eyeRing} stroke={PALETTE.eyeStroke} strokeWidth="2" />
-        <circle cx="575" cy="55" r="28" fill={PALETTE.eyeRing} stroke={PALETTE.eyeStroke} strokeWidth="2" />
-        <text x="560" y="68" fill={PALETTE.eyeStroke} fontSize="32" fontWeight="bold">?</text>
+        <circle cx="502" cy="132" r="8" fill={PALETTE.eyeRing} stroke={PALETTE.eyeStroke} strokeWidth="2" className="ovo-owl-thought" />
+        <circle cx="520" cy="108" r="12" fill={PALETTE.eyeRing} stroke={PALETTE.eyeStroke} strokeWidth="2" className="ovo-owl-thought ovo-owl-thought-2" />
+        <g className="ovo-owl-thought ovo-owl-thought-3">
+          <path
+            d="M 540 85 Q 530 60 555 55 Q 570 30 600 45 Q 625 35 632 60 Q 650 68 642 90 Q 650 110 625 115 Q 610 130 585 120 Q 560 130 548 110 Q 530 105 540 85 Z"
+            fill={PALETTE.eyeRing}
+            stroke={PALETTE.eyeStroke}
+            strokeWidth="2.5"
+          />
+          <circle cx="570" cy="82" r="4.5" fill={PALETTE.eyeStroke} />
+          <circle cx="594" cy="82" r="4.5" fill={PALETTE.eyeStroke} />
+          <circle cx="618" cy="82" r="4.5" fill={PALETTE.eyeStroke} />
+        </g>
+      </g>
+    );
+  }
+  if (state === "typing") {
+    return (
+      <g>
+        <g>
+          <path d="M 108 478 L 572 478 L 556 420 L 124 420 Z" fill="#1A1008" />
+          <path d="M 118 472 L 562 472 L 548 424 L 132 424 Z" fill="#2C1810" />
+          {(() => {
+            const rowDefs = [
+              { y: 430, keys: 12, indent: 0 },
+              { y: 443, keys: 11, indent: 10 },
+              { y: 456, keys: 10, indent: 20 },
+            ];
+            const keys: JSX.Element[] = [];
+            rowDefs.forEach((row, rowIdx) => {
+              const rowWidth = 430 - row.indent * 2;
+              const keyGap = 2;
+              const keyW = (rowWidth - keyGap * (row.keys - 1)) / row.keys;
+              const keyH = 10;
+              const startX = 125 + row.indent;
+              for (let i = 0; i < row.keys; i++) {
+                const x = startX + i * (keyW + keyGap);
+                keys.push(
+                  <g key={`r${rowIdx}-k${i}`}>
+                    <rect x={x} y={row.y} width={keyW} height={keyH} rx="1.5" fill="#4A3220" />
+                    <rect x={x + 0.5} y={row.y + 0.5} width={keyW - 1} height={keyH - 3} rx="1" fill="#6B4A30" />
+                  </g>,
+                );
+              }
+            });
+            return <g>{keys}</g>;
+          })()}
+          <g>
+            <rect x="200" y="466" width="220" height="8" rx="1.5" fill="#4A3220" />
+            <rect x="201" y="466.5" width="218" height="5" rx="1" fill="#6B4A30" />
+          </g>
+          <g>
+            <rect x="170" y="466" width="26" height="8" rx="1.5" fill="#4A3220" />
+            <rect x="424" y="466" width="26" height="8" rx="1.5" fill="#4A3220" />
+            <rect x="454" y="466" width="26" height="8" rx="1.5" fill="#4A3220" />
+          </g>
+          <rect x="124" y="420" width="432" height="2" fill="#6B4A30" opacity="0.4" />
+        </g>
+        <g className="ovo-owl-typing-arm-l">
+          <path
+            d="M 220 310 Q 178 360 196 440 Q 222 448 252 438 Q 268 380 250 330 Q 240 315 220 310 Z"
+            fill={PALETTE.bodyShadow}
+            stroke={PALETTE.eyeStroke}
+            strokeWidth="2"
+            strokeLinejoin="round"
+          />
+          <g stroke={PALETTE.eyeStroke} strokeWidth="1.5" fill="none" opacity="0.55" strokeLinecap="round">
+            <path d="M 212 340 Q 218 390 210 430" />
+            <path d="M 232 340 Q 238 395 232 436" />
+          </g>
+        </g>
+        <g className="ovo-owl-typing-arm-r">
+          <path
+            d="M 460 310 Q 502 360 484 440 Q 458 448 428 438 Q 412 380 430 330 Q 440 315 460 310 Z"
+            fill={PALETTE.bodyShadow}
+            stroke={PALETTE.eyeStroke}
+            strokeWidth="2"
+            strokeLinejoin="round"
+          />
+          <g stroke={PALETTE.eyeStroke} strokeWidth="1.5" fill="none" opacity="0.55" strokeLinecap="round">
+            <path d="M 468 340 Q 462 390 470 430" />
+            <path d="M 448 340 Q 442 395 448 436" />
+          </g>
+        </g>
+        <g className="ovo-owl-flutter" fill="#5FA8D3" opacity="0.85">
+          <text x="128" y="424" fontSize="14" fontFamily="monospace" fontWeight="bold">
+            tap
+          </text>
+          <text x="510" y="424" fontSize="14" fontFamily="monospace" fontWeight="bold">
+            tap
+          </text>
+        </g>
       </g>
     );
   }
   if (state === "happy") {
     return (
       <g stroke={PALETTE.beak} strokeWidth="3" strokeLinecap="round" fill="none">
-        <line x1="120" y1="200" x2="140" y2="210" />
-        <line x1="130" y1="175" x2="140" y2="195" />
-        <line x1="560" y1="200" x2="540" y2="210" />
-        <line x1="550" y1="175" x2="540" y2="195" />
+        <g className="ovo-owl-sparkle-1">
+          <line x1="120" y1="200" x2="140" y2="210" />
+          <line x1="130" y1="175" x2="140" y2="195" />
+        </g>
+        <g className="ovo-owl-sparkle-2">
+          <line x1="560" y1="200" x2="540" y2="210" />
+          <line x1="550" y1="175" x2="540" y2="195" />
+        </g>
       </g>
     );
   }
@@ -183,7 +283,7 @@ function Mouth({ state }: { state: OwlState }) {
 export function Owl({ state = "idle", size = "md", className = "", accent }: OwlProps) {
   const px = typeof size === "number" ? size : OWL_SIZES[size];
   const body = accent ?? PALETTE.body;
-  const stateClass = state === "struggling" ? "ovo-owl-struggling" : "";
+  const stateClass = `ovo-owl-${state}`;
   return (
     <svg
       viewBox="0 0 680 480"
