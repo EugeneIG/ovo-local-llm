@@ -1,0 +1,74 @@
+{
+  "app": {
+    "name": "OVO",
+    "tagline": "로컬 MLX LLM 런타임"
+  },
+  "nav": {
+    "chat": "채팅",
+    "models": "모델",
+    "settings": "설정",
+    "about": "정보"
+  },
+  "sidecar": {
+    "status": {
+      "stopped": "중지됨",
+      "starting": "시작 중",
+      "healthy": "정상",
+      "failed": "실패"
+    },
+    "restart": "사이드카 재시작",
+    "restarting": "재시작 중…",
+    "ports": {
+      "ollama": "Ollama",
+      "openai": "OpenAI",
+      "native": "Native"
+    },
+    "pid": "PID",
+    "message": "메시지",
+    "healthy_apis": "정상 API",
+    "no_message": "메시지 없음"
+  },
+  "chat": {
+    "empty": "모델을 선택하고 메시지를 보내봐",
+    "placeholder": "무엇이든 물어봐…",
+    "send": "보내기",
+    "stop": "중지",
+    "thinking": "생각 중…",
+    "clear": "대화 지우기"
+  },
+  "models": {
+    "title": "설치된 모델",
+    "count": "{{count}}개 모델",
+    "empty": "MLX 모델이 없어. HF 캐시 또는 LM Studio에서 받아봐",
+    "mlx_only": "MLX 모델만 표시",
+    "source": {
+      "hf": "HuggingFace",
+      "lmstudio": "LM Studio"
+    },
+    "size": "크기",
+    "quant": "양자화",
+    "arch": "아키텍처"
+  },
+  "settings": {
+    "language": "언어",
+    "theme": "테마",
+    "themes": {
+      "system": "시스템",
+      "light": "라이트",
+      "dark": "다크"
+    },
+    "default_model": "기본 모델",
+    "ports": "포트",
+    "expose_to_network": "네트워크 공개",
+    "claude_integration": "Claude 연동",
+    "pet_enabled": "데스크톱 펫 활성화"
+  },
+  "common": {
+    "loading": "불러오는 중…",
+    "error": "에러",
+    "retry": "다시 시도",
+    "close": "닫기",
+    "save": "저장",
+    "cancel": "취소"
+  }
+}

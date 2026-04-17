@@ -1,10 +1,16 @@
+export type ModelSource = "hf" | "lmstudio";
+
 export interface OvoModel {
   repo_id: string;
   revision: string;
+  snapshot_path: string;
   size_bytes: number;
   is_mlx: boolean;
-  quantization?: string;
-  context_length?: number;
+  model_type?: string | null;
+  architecture?: string | null;
+  quantization?: string | null;
+  hidden_size?: number | null;
+  source: ModelSource;
 }
 
 export interface ChatMessage {
@@ -21,4 +27,10 @@ export interface OvoSettings {
   expose_to_network: boolean;
   claude_integration_enabled: boolean;
   pet_enabled: boolean;
+}
+
+export interface OvoModelsResponse {
+  models: OvoModel[];
+  count: number;
+  cache_dirs: { hf: string; lmstudio: string };
 }
