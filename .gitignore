@@ -12,6 +12,8 @@ out/
 target/
 *.dmg
 *.app
+tsconfig.tsbuildinfo
+*.tsbuildinfo
 
 # Tauri
 src-tauri/target/
