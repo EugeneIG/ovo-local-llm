@@ -2,6 +2,18 @@
 @tailwind components;
 @tailwind utilities;
 
+@keyframes ovo-owl-shake {
+  0%, 100% { transform: rotate(-6deg) translateY(-2px); }
+  25% { transform: rotate(5deg) translateY(1px); }
+  50% { transform: rotate(-4deg) translateY(-1px); }
+  75% { transform: rotate(6deg) translateY(2px); }
+}
+
+.ovo-owl-struggling {
+  animation: ovo-owl-shake 0.28s ease-in-out infinite;
+  transform-origin: 50% 85%;
+}
+
 :root {
   font-family: Inter, -apple-system, system-ui, sans-serif;
   line-height: 1.5;
