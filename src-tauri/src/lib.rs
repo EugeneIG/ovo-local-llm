@@ -12,12 +12,20 @@ use sidecar::{SidecarState, SidecarStatus};
 // The DB lives in the Tauri app data dir ($APPDATA/com.ovoment.ovo/chats.sqlite)
 // and is owned by the frontend (sessions/messages/model_context_overrides).
 fn chats_migrations() -> Vec<Migration> {
-    vec![Migration {
-        version: 1,
-        description: "init: sessions + messages + model_context_overrides",
-        sql: include_str!("../migrations/001_init.sql"),
-        kind: MigrationKind::Up,
-    }]
+    vec![
+        Migration {
+            version: 1,
+            description: "init: sessions + messages + model_context_overrides",
+            sql: include_str!("../migrations/001_init.sql"),
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 2,
+            description: "wiki: wiki_pages + FTS5 index for persistent knowledge",
+            sql: include_str!("../migrations/002_wiki.sql"),
+            kind: MigrationKind::Up,
+        },
+    ]
 }
 // [END]
 

@@ -6,6 +6,7 @@ import { ToastStack } from "./Toast";
 import { ChatPane } from "../panes/ChatPane";
 import { CodePane } from "../panes/CodePane";
 import { ImagePane } from "../panes/ImagePane";
+import { WikiPane } from "../panes/WikiPane";
 import { ModelsPane } from "../panes/ModelsPane";
 import { SettingsPane } from "../panes/SettingsPane";
 import { AboutPane } from "../panes/AboutPane";
@@ -158,6 +159,7 @@ export function AppShell() {
           {active === "chat" && <ChatPane />}
           {active === "code" && <CodePane />}
           {active === "image" && <ImagePane />}
+          {active === "wiki" && <WikiPane />}
           {active === "models" && <ModelsPane />}
           {active === "settings" && <SettingsPane />}
           {active === "about" && <AboutPane />}

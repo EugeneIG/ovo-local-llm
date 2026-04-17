@@ -7,6 +7,7 @@
     "chat": "Chat",
     "code": "Code",
     "image": "Image",
+    "wiki": "Wiki",
     "models": "Models",
     "settings": "Settings",
     "about": "About"
@@ -25,6 +26,22 @@
       "download": "Pull Draw Things-level catalog coverage (SD 1.5 / SDXL / Flux / ControlNet / LoRA) from HF via the Models tab",
       "settings": "Settings: model · LoRA · control · strength · seed · size · steps · CFG · sampler · shift · batch · prompt/negative"
     }
+  },
+  "wiki": {
+    "title": "Wiki",
+    "new": "New page",
+    "new_prompt": "Enter a page title",
+    "search_placeholder": "Search wiki…",
+    "empty": "No pages yet. Hit + to add one.",
+    "no_results": "No matches",
+    "untitled": "Untitled",
+    "content_placeholder": "Free-form markdown. Auto-saved.",
+    "pick_page": "Pick a page on the left or create a new one with +",
+    "auto_saved": "Auto-saved · {{slug}}",
+    "pin": "Pin to top",
+    "unpin": "Unpin",
+    "delete": "Delete page",
+    "delete_confirm": "Really delete \"{{title}}\"?"
   },
   "sidecar": {
     "status": {

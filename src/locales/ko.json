@@ -7,6 +7,7 @@
     "chat": "채팅",
     "code": "코드",
     "image": "이미지",
+    "wiki": "위키",
     "models": "모델",
     "settings": "설정",
     "about": "정보"
@@ -25,6 +26,22 @@
       "download": "모델 탭에서 Draw Things 수준의 HF 카탈로그(SD 1.5 / SDXL / Flux / ControlNet / LoRA)를 받을 수 있어",
       "settings": "설정: 모델 · LoRA · 컨트롤 · 강도 · 시드 · 이미지 크기 · 단계 · 텍스트 가이드 · 샘플러 · 시프트 · 배치 · 프롬프트/네거티브"
     }
+  },
+  "wiki": {
+    "title": "위키",
+    "new": "새 페이지",
+    "new_prompt": "페이지 제목을 입력해",
+    "search_placeholder": "위키 검색…",
+    "empty": "아직 위키 페이지가 없어. + 버튼으로 추가해봐",
+    "no_results": "검색 결과가 없어",
+    "untitled": "제목 없음",
+    "content_placeholder": "마크다운으로 자유롭게 기록해. 자동 저장돼.",
+    "pick_page": "왼쪽에서 페이지를 선택하거나 + 버튼으로 새로 만들어",
+    "auto_saved": "자동 저장됨 · {{slug}}",
+    "pin": "상단 고정",
+    "unpin": "고정 해제",
+    "delete": "페이지 삭제",
+    "delete_confirm": "\"{{title}}\" 페이지를 정말 삭제할까?"
   },
   "sidecar": {
     "status": {

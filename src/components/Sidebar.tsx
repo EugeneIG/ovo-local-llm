@@ -1,10 +1,10 @@
 import { useTranslation } from "react-i18next";
-import { MessageSquare, Code2, Image as ImageIcon, Package, Settings, Info } from "lucide-react";
+import { MessageSquare, Code2, Image as ImageIcon, BookOpen, Package, Settings, Info } from "lucide-react";
 import type { ComponentType, SVGProps } from "react";
 import { RecentsPanel } from "./RecentsPanel";
 import { useThemeStore } from "../store/theme";
 
-export type NavKey = "chat" | "code" | "image" | "models" | "settings" | "about";
+export type NavKey = "chat" | "code" | "image" | "wiki" | "models" | "settings" | "about";
 
 interface NavItem {
   key: NavKey;
@@ -17,10 +17,11 @@ const NAV_ITEMS: NavItem[] = [
   { key: "image", icon: ImageIcon },
 ];
 
-// [START] Secondary bottom-dock items — models/settings/info rendered as
+// [START] Secondary bottom-dock items — models/wiki/settings/info rendered as
 // small icon-only buttons at the bottom center of the sidebar (no labels).
 const BOTTOM_ITEMS: NavItem[] = [
   { key: "models", icon: Package },
+  { key: "wiki", icon: BookOpen },
   { key: "settings", icon: Settings },
   { key: "about", icon: Info },
 ];
