@@ -1,27 +1,298 @@
-use tauri::{AppHandle, Manager};
+use std::path::{Path, PathBuf};
+use std::sync::Mutex;
+use std::time::{Duration, Instant};
+
+use serde::{Deserialize, Serialize};
+use tauri::{AppHandle, Emitter, Manager};
+use tauri_plugin_shell::process::{CommandChild, CommandEvent};
 use tauri_plugin_shell::ShellExt;
 
+pub const STATUS_EVENT: &str = "sidecar://status";
+
+/// Three FastAPI ports served by the Python sidecar.
+/// Must stay in sync with `sidecar/src/ovo_sidecar/config.py` defaults.
+#[derive(Clone, Serialize, Deserialize, Debug)]
+pub struct SidecarPorts {
+    pub ollama: u16,
+    pub openai: u16,
+    pub native: u16,
+}
+
+impl Default for SidecarPorts {
+    fn default() -> Self {
+        Self {
+            ollama: 11435,
+            openai: 11436,
+            native: 11437,
+        }
+    }
+}
+
+#[derive(Clone, Serialize, Debug, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum SidecarHealth {
+    Stopped,
+    Starting,
+    Healthy,
+    Failed,
+}
+
+#[derive(Clone, Serialize, Debug)]
+pub struct SidecarStatus {
+    pub health: SidecarHealth,
+    pub ports: SidecarPorts,
+    pub pid: Option<u32>,
+    pub message: Option<String>,
+    pub healthy_apis: Vec<String>,
+}
+
+pub struct SidecarState {
+    child: Mutex<Option<CommandChild>>,
+    status: Mutex<SidecarStatus>,
+}
+
+impl SidecarState {
+    fn new(ports: SidecarPorts) -> Self {
+        Self {
+            child: Mutex::new(None),
+            status: Mutex::new(SidecarStatus {
+                health: SidecarHealth::Stopped,
+                ports,
+                pid: None,
+                message: None,
+                healthy_apis: vec![],
+            }),
+        }
+    }
+
+    pub fn snapshot(&self) -> SidecarStatus {
+        self.status.lock().unwrap().clone()
+    }
+}
+
+// [START] managed sidecar lifecycle — spawn, health monitor, kill on exit
+pub fn setup(app: &AppHandle) {
+    app.manage(SidecarState::new(SidecarPorts::default()));
+    spawn(app.clone());
+}
+
 pub fn spawn(app: AppHandle) {
-    let shell = app.shell();
+    let Some(state) = app.try_state::<SidecarState>() else {
+        log::error!("SidecarState not managed — setup() must run first");
+        return;
+    };
+    let ports = state.snapshot().ports;
 
-    let resource_dir = app
-        .path()
-        .resource_dir()
-        .ok()
-        .map(|p| p.join("sidecar"))
-        .filter(|p| p.exists());
+    let Some(command) = resolve_command(&app) else {
+        update_status(&app, |s| {
+            s.health = SidecarHealth::Failed;
+            s.message = Some("sidecar command not found (no bundle, no dev script)".into());
+        });
+        return;
+    };
 
-    let cmd = match resource_dir {
-        Some(dir) => shell.command(dir.join("ovo-sidecar").to_string_lossy().to_string()),
-        None => {
-            log::warn!("sidecar bundle not found — falling back to `uv run` in dev mode");
-            shell
-                .command("uv")
-                .args(["run", "--directory", "sidecar", "ovo-sidecar"])
+    update_status(&app, |s| {
+        s.health = SidecarHealth::Starting;
+        s.message = None;
+        s.healthy_apis.clear();
+    });
+
+    let (mut rx, child) = match command.spawn() {
+        Ok(r) => r,
+        Err(e) => {
+            update_status(&app, |s| {
+                s.health = SidecarHealth::Failed;
+                s.message = Some(format!("spawn failed: {e}"));
+            });
+            return;
         }
     };
 
-    if let Err(e) = cmd.spawn() {
-        log::error!("failed to spawn sidecar: {e}");
+    let pid = child.pid();
+    {
+        let mut guard = state.child.lock().unwrap();
+        *guard = Some(child);
+    }
+    update_status(&app, |s| s.pid = Some(pid));
+
+    // Log pump
+    let app_logs = app.clone();
+    tauri::async_runtime::spawn(async move {
+        while let Some(event) = rx.recv().await {
+            match event {
+                CommandEvent::Stdout(line) => {
+                    log::info!(target: "sidecar", "{}", String::from_utf8_lossy(&line).trim_end());
+                }
+                CommandEvent::Stderr(line) => {
+                    log::warn!(target: "sidecar", "{}", String::from_utf8_lossy(&line).trim_end());
+                }
+                CommandEvent::Error(e) => {
+                    log::error!(target: "sidecar", "{e}");
+                }
+                CommandEvent::Terminated(payload) => {
+                    log::error!(target: "sidecar", "terminated: {:?}", payload);
+                    update_status(&app_logs, |s| {
+                        s.health = SidecarHealth::Stopped;
+                        s.pid = None;
+                        s.healthy_apis.clear();
+                        s.message = Some(format!("terminated (code {:?})", payload.code));
+                    });
+                    if let Some(state) = app_logs.try_state::<SidecarState>() {
+                        state.child.lock().unwrap().take();
+                    }
+                    break;
+                }
+                _ => {}
+            }
+        }
+    });
+
+    // Health monitor
+    let app_hc = app.clone();
+    tauri::async_runtime::spawn(async move {
+        health_loop(app_hc, ports).await;
+    });
+}
+
+pub fn kill(app: &AppHandle) {
+    if let Some(state) = app.try_state::<SidecarState>() {
+        if let Some(child) = state.child.lock().unwrap().take() {
+            let _ = child.kill();
+        }
+        update_status(app, |s| {
+            s.health = SidecarHealth::Stopped;
+            s.pid = None;
+            s.healthy_apis.clear();
+            s.message = None;
+        });
     }
 }
+
+pub async fn restart(app: AppHandle) {
+    kill(&app);
+    tokio::time::sleep(Duration::from_millis(400)).await;
+    spawn(app);
+}
+
+fn update_status<F: FnOnce(&mut SidecarStatus)>(app: &AppHandle, f: F) {
+    let Some(state) = app.try_state::<SidecarState>() else { return };
+    let snapshot = {
+        let mut guard = state.status.lock().unwrap();
+        f(&mut guard);
+        guard.clone()
+    };
+    if let Err(e) = app.emit(STATUS_EVENT, snapshot) {
+        log::warn!("emit {STATUS_EVENT} failed: {e}");
+    }
+}
+
+async fn health_loop(app: AppHandle, ports: SidecarPorts) {
+    let client = match reqwest::Client::builder()
+        .timeout(Duration::from_millis(800))
+        .build()
+    {
+        Ok(c) => c,
+        Err(e) => {
+            log::error!("reqwest client build: {e}");
+            return;
+        }
+    };
+    let endpoints: [(&str, u16); 3] = [
+        ("ollama", ports.ollama),
+        ("openai", ports.openai),
+        ("native", ports.native),
+    ];
+
+    let started = Instant::now();
+    let startup_grace = Duration::from_secs(45);
+    let mut last_healthy: Vec<String> = vec![];
+    let mut last_health = SidecarHealth::Starting;
+
+    loop {
+        let child_alive = app
+            .try_state::<SidecarState>()
+            .map(|s| s.child.lock().unwrap().is_some())
+            .unwrap_or(false);
+        if !child_alive {
+            break;
+        }
+
+        let mut healthy: Vec<String> = vec![];
+        for (name, port) in endpoints {
+            let url = format!("http://127.0.0.1:{port}/healthz");
+            if let Ok(resp) = client.get(&url).send().await {
+                if resp.status().is_success() {
+                    healthy.push(name.to_string());
+                }
+            }
+        }
+
+        let new_health = if healthy.len() == 3 {
+            SidecarHealth::Healthy
+        } else if started.elapsed() > startup_grace {
+            SidecarHealth::Failed
+        } else {
+            SidecarHealth::Starting
+        };
+
+        if new_health != last_health || healthy != last_healthy {
+            let captured_health = new_health.clone();
+            let captured_healthy = healthy.clone();
+            update_status(&app, |s| {
+                s.health = captured_health;
+                s.healthy_apis = captured_healthy;
+                if s.health != SidecarHealth::Failed {
+                    s.message = None;
+                } else {
+                    s.message = Some(format!(
+                        "only {}/3 APIs healthy after {}s",
+                        healthy.len(),
+                        startup_grace.as_secs()
+                    ));
+                }
+            });
+            last_health = new_health;
+            last_healthy = healthy;
+        }
+
+        tokio::time::sleep(Duration::from_millis(1000)).await;
+    }
+}
+
+fn resolve_command(app: &AppHandle) -> Option<tauri_plugin_shell::process::Command> {
+    let shell = app.shell();
+
+    if let Ok(resource_dir) = app.path().resource_dir() {
+        let bin = resource_dir.join("sidecar").join("ovo-sidecar");
+        if bin.exists() {
+            log::info!("using bundled sidecar at {}", bin.display());
+            return Some(shell.command(bin.to_string_lossy().to_string()));
+        }
+    }
+
+    if let Ok(cwd) = std::env::current_dir() {
+        if let Some(script) = find_dev_script(&cwd) {
+            log::info!("using dev sidecar via {}", script.display());
+            return Some(
+                shell
+                    .command("/usr/bin/env")
+                    .args(["bash", script.to_string_lossy().as_ref()]),
+            );
+        }
+    }
+
+    None
+}
+
+fn find_dev_script(start: &Path) -> Option<PathBuf> {
+    let mut cur = start.to_path_buf();
+    for _ in 0..6 {
+        let candidate = cur.join("sidecar").join("scripts").join("dev.sh");
+        if candidate.exists() {
+            return Some(candidate);
+        }
+        cur = cur.parent()?.to_path_buf();
+    }
+    None
+}
+// [END]
