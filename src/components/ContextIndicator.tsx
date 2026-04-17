@@ -157,7 +157,7 @@ export function ContextIndicator() {
 
         {/* Tooltip */}
         {showTooltip && (
-          <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 z-50 w-56 rounded-lg bg-[#2C1810] text-[#FAF3E7] text-[11px] p-3 shadow-lg pointer-events-none whitespace-pre-line">
+          <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 z-50 w-56 rounded-lg bg-ovo-text text-ovo-bg text-[11px] p-3 shadow-lg pointer-events-none whitespace-pre-line">
             <p className="font-medium mb-1">
               {t("context.tooltip_remaining", { percent: remaining })}
             </p>
@@ -184,7 +184,7 @@ export function ContextIndicator() {
       <div className="relative" ref={dropdownRef}>
         <button
           onClick={() => setDropdownOpen((v) => !v)}
-          className="flex items-center gap-1 text-[11px] px-2 py-1 rounded bg-[#E8CFBB] text-[#2C1810] hover:bg-[#D97757] hover:text-white transition"
+          className="flex items-center gap-1 text-[11px] px-2 py-1 rounded bg-ovo-border text-ovo-text hover:bg-ovo-accent hover:text-ovo-accent-ink transition"
           aria-label={t("context.reset")}
           title={t("context.reset")}
         >
@@ -193,16 +193,16 @@ export function ContextIndicator() {
         </button>
 
         {dropdownOpen && (
-          <div className="absolute bottom-full right-0 mb-1 z-50 min-w-[160px] rounded-lg bg-white border border-[#E8CFBB] shadow-lg overflow-hidden">
+          <div className="absolute bottom-full right-0 mb-1 z-50 min-w-[160px] rounded-lg bg-ovo-surface-solid border border-ovo-border shadow-lg overflow-hidden">
             <button
               onClick={() => void handleEscape()}
-              className="w-full text-left text-[12px] px-3 py-2 hover:bg-[#FAF3E7] text-[#2C1810] transition"
+              className="w-full text-left text-[12px] px-3 py-2 hover:bg-ovo-bg text-ovo-text transition"
             >
               {t("context.escape_to_new")}
             </button>
             <button
               onClick={() => void handleClear()}
-              className="w-full text-left text-[12px] px-3 py-2 hover:bg-[#FAF3E7] text-[#2C1810] transition"
+              className="w-full text-left text-[12px] px-3 py-2 hover:bg-ovo-bg text-ovo-text transition"
             >
               {t("context.clear_messages")}
             </button>

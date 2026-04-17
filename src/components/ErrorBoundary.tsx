@@ -28,25 +28,25 @@ export class ErrorBoundary extends Component<Props, State> {
     if (!error) return this.props.children;
 
     return (
-      <div className="h-screen overflow-auto bg-[#FAF3E7] text-[#2C1810] p-8 font-mono text-sm">
+      <div className="h-screen overflow-auto bg-ovo-bg text-ovo-text p-8 font-mono text-sm">
         <div className="max-w-3xl mx-auto">
           <h1 className="text-xl font-bold text-rose-700 mb-2">렌더 에러 🚨</h1>
-          <p className="text-[#8B4432] mb-4">
+          <p className="text-ovo-muted mb-4">
             앱이 crash 했어. 아래 스택을 복사해서 알려줘.
           </p>
-          <pre className="p-4 bg-white/70 border border-[#E8CFBB] rounded-lg whitespace-pre-wrap break-words mb-3">
+          <pre className="p-4 bg-ovo-surface border border-ovo-border rounded-lg whitespace-pre-wrap break-words mb-3">
             {error.name}: {error.message}
             {"\n\n"}
             {error.stack ?? ""}
           </pre>
           {info?.componentStack && (
-            <pre className="p-4 bg-white/70 border border-[#E8CFBB] rounded-lg whitespace-pre-wrap break-words text-[11px] text-[#8B4432]">
+            <pre className="p-4 bg-ovo-surface border border-ovo-border rounded-lg whitespace-pre-wrap break-words text-[11px] text-ovo-muted">
               {info.componentStack}
             </pre>
           )}
           <button
             onClick={this.reset}
-            className="mt-4 px-4 py-2 rounded-md bg-[#D97757] text-white text-xs hover:bg-[#B85D3F] transition"
+            className="mt-4 px-4 py-2 rounded-md bg-ovo-accent text-ovo-accent-ink text-xs hover:bg-ovo-accent-hover transition"
           >
             다시 시도
           </button>

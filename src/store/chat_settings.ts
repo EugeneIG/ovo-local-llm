@@ -11,12 +11,14 @@ export interface ChatSettings {
   default_strategy: CompactStrategy;
   global_warn_threshold: number; // 0–1, default 0.75
   streaming_send_mode: StreamingSendMode; // default "queue"
+  sound_enabled: boolean; // play owl-hoot on reply complete, default true
 }
 
 interface ChatSettingsState extends ChatSettings {
   setDefaultStrategy: (strategy: CompactStrategy) => void;
   setGlobalWarnThreshold: (threshold: number) => void;
   setStreamingSendMode: (mode: StreamingSendMode) => void;
+  setSoundEnabled: (enabled: boolean) => void;
   load: () => void;
 }
 
@@ -24,6 +26,7 @@ const DEFAULTS: ChatSettings = {
   default_strategy: "auto",
   global_warn_threshold: 0.75,
   streaming_send_mode: "queue",
+  sound_enabled: true,
 };
 
 function persist(state: ChatSettings): void {
@@ -56,27 +59,58 @@ export const useChatSettingsStore = create<ChatSettingsState>((set, get) => ({
           ? stored.global_warn_threshold
           : DEFAULTS.global_warn_threshold,
       streaming_send_mode: stored.streaming_send_mode ?? DEFAULTS.streaming_send_mode,
+      sound_enabled:
+        typeof stored.sound_enabled === "boolean"
+          ? stored.sound_enabled
+          : DEFAULTS.sound_enabled,
     };
     set(next);
   },
 
+  // [START] Snapshot + persist — all setters use get() after set() so the
+  // persisted blob always contains every field regardless of which one changed.
   setDefaultStrategy: (strategy) => {
     set({ default_strategy: strategy });
     const s = get();
-    persist({ default_strategy: strategy, global_warn_threshold: s.global_warn_threshold, streaming_send_mode: s.streaming_send_mode });
+    persist({
+      default_strategy: s.default_strategy,
+      global_warn_threshold: s.global_warn_threshold,
+      streaming_send_mode: s.streaming_send_mode,
+      sound_enabled: s.sound_enabled,
+    });
   },
 
   setGlobalWarnThreshold: (threshold) => {
     set({ global_warn_threshold: threshold });
     const s = get();
-    persist({ default_strategy: s.default_strategy, global_warn_threshold: threshold, streaming_send_mode: s.streaming_send_mode });
+    persist({
+      default_strategy: s.default_strategy,
+      global_warn_threshold: s.global_warn_threshold,
+      streaming_send_mode: s.streaming_send_mode,
+      sound_enabled: s.sound_enabled,
+    });
   },
 
-  // [START] setStreamingSendMode — persists new mode alongside existing fields
   setStreamingSendMode: (mode) => {
     set({ streaming_send_mode: mode });
     const s = get();
-    persist({ default_strategy: s.default_strategy, global_warn_threshold: s.global_warn_threshold, streaming_send_mode: mode });
+    persist({
+      default_strategy: s.default_strategy,
+      global_warn_threshold: s.global_warn_threshold,
+      streaming_send_mode: s.streaming_send_mode,
+      sound_enabled: s.sound_enabled,
+    });
+  },
+
+  setSoundEnabled: (enabled) => {
+    set({ sound_enabled: enabled });
+    const s = get();
+    persist({
+      default_strategy: s.default_strategy,
+      global_warn_threshold: s.global_warn_threshold,
+      streaming_send_mode: s.streaming_send_mode,
+      sound_enabled: s.sound_enabled,
+    });
   },
   // [END]
 }));

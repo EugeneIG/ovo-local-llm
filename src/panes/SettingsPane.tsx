@@ -1,11 +1,16 @@
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { ChevronDown, Copy } from "lucide-react";
 import { LanguageToggle } from "../components/LanguageToggle";
+import { useThemeStore, type ThemeMode } from "../store/theme";
 import { useSidecarStore } from "../store/sidecar";
 import { useChatSettingsStore } from "../store/chat_settings";
 import { useModelOverridesStore } from "../store/model_overrides";
+import { usePetStore } from "../store/pet";
+import { useToastsStore } from "../store/toasts";
 import { listModels } from "../lib/api";
 import type { CompactStrategy, ModelContextOverride, OvoModel } from "../types/ovo";
+import type { SidecarPorts } from "../types/sidecar";
 import type { StreamingSendMode } from "../store/chat_settings";
 
 // [START] SettingsPane — language/ports + context management (R.6)
@@ -68,12 +73,12 @@ function AddOverrideRow({ models, overrides, globalThreshold, onAdd, onCancel }:
   if (available.length === 0) return null;
 
   return (
-    <tr className="bg-[#FAF3E7]">
+    <tr className="bg-ovo-chip">
       <td className="px-3 py-2">
         <select
           value={repoId}
           onChange={(e) => handleRepoChange(e.target.value)}
-          className="text-xs border border-[#E8CFBB] rounded px-2 py-1 bg-white text-[#2C1810] w-full"
+          className="text-xs border border-ovo-border rounded px-2 py-1 bg-ovo-surface-solid text-ovo-text w-full"
         >
           {available.map((m) => (
             <option key={m.repo_id} value={m.repo_id}>
@@ -90,7 +95,7 @@ function AddOverrideRow({ models, overrides, globalThreshold, onAdd, onCancel }:
           step={512}
           value={maxContext}
           onChange={(e) => setMaxContext(Number(e.target.value))}
-          className="text-xs border border-[#E8CFBB] rounded px-2 py-1 bg-white text-[#2C1810] w-24 font-mono"
+          className="text-xs border border-ovo-border rounded px-2 py-1 bg-ovo-surface-solid text-ovo-text w-24 font-mono"
         />
       </td>
       <td className="px-3 py-2">
@@ -102,22 +107,22 @@ function AddOverrideRow({ models, overrides, globalThreshold, onAdd, onCancel }:
             step={0.05}
             value={threshold}
             onChange={(e) => setThreshold(Number(e.target.value))}
-            className="w-20 accent-[#D97757]"
+            className="w-20 accent-ovo-accent"
           />
-          <span className="text-xs text-[#8B4432] w-8">{Math.round(threshold * 100)}%</span>
+          <span className="text-xs text-ovo-muted w-8">{Math.round(threshold * 100)}%</span>
         </div>
       </td>
       <td className="px-3 py-2">
         <div className="flex items-center gap-2">
           <button
             onClick={() => void handleSave()}
-            className="text-xs px-2 py-1 rounded bg-[#D97757] text-white hover:bg-[#8B4432] transition"
+            className="text-xs px-2 py-1 rounded bg-ovo-accent text-white hover:bg-ovo-accent-hover transition"
           >
             {t("common.save")}
           </button>
           <button
             onClick={onCancel}
-            className="text-xs px-2 py-1 rounded bg-[#E8CFBB] text-[#2C1810] hover:bg-[#D97757] hover:text-white transition"
+            className="text-xs px-2 py-1 rounded bg-ovo-border text-ovo-text hover:bg-ovo-accent hover:text-white transition"
           >
             {t("common.cancel")}
           </button>
@@ -127,15 +132,345 @@ function AddOverrideRow({ models, overrides, globalThreshold, onAdd, onCancel }:
   );
 }
 
+// ── Advanced / External Connections section ───────────────────────────────────
+
+// [START] OvoServerSettings — shape of GET/PUT /ovo/settings relevant to default_model
+interface OvoServerSettings {
+  default_model?: string | null;
+}
+// [END]
+
+// [START] CopyButton — copies text to clipboard and shows a toast
+interface CopyButtonProps {
+  text: string;
+  label: string;
+  copiedLabel: string;
+  onCopied: () => void;
+}
+
+function CopyButton({ text, label, copiedLabel, onCopied }: CopyButtonProps) {
+  const [copied, setCopied] = useState(false);
+
+  function handleCopy() {
+    navigator.clipboard.writeText(text).then(() => {
+      setCopied(true);
+      onCopied();
+      setTimeout(() => setCopied(false), 2000);
+    }).catch(() => undefined);
+  }
+
+  return (
+    <button
+      onClick={handleCopy}
+      title={copied ? copiedLabel : label}
+      className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded bg-ovo-border text-ovo-text hover:bg-ovo-accent hover:text-white transition shrink-0"
+    >
+      <Copy size={10} />
+      {copied ? copiedLabel : label}
+    </button>
+  );
+}
+// [END]
+
+// [START] EndpointCard — one card per API flavor (Ollama / OpenAI / Native)
+interface EndpointCardProps {
+  name: string;
+  baseUrl: string;
+  snippets: Array<{ label: string; code: string }>;
+  copyLabel: string;
+  copiedLabel: string;
+  onCopied: (text: string) => void;
+}
+
+function EndpointCard({ name, baseUrl, snippets, copyLabel, copiedLabel, onCopied }: EndpointCardProps) {
+  return (
+    <div className="bg-ovo-chip rounded border border-ovo-border p-3 flex flex-col gap-2">
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-xs font-semibold text-ovo-text">{name}</span>
+        <CopyButton
+          text={baseUrl}
+          label={copyLabel}
+          copiedLabel={copiedLabel}
+          onCopied={() => onCopied(baseUrl)}
+        />
+      </div>
+      <code className="text-[10px] font-mono text-ovo-muted break-all">{baseUrl}</code>
+      {snippets.map((s) => (
+        <div key={s.label} className="flex flex-col gap-1">
+          <div className="flex items-center justify-between gap-1">
+            <span className="text-[10px] text-ovo-muted/70">{s.label}</span>
+            <CopyButton
+              text={s.code}
+              label={copyLabel}
+              copiedLabel={copiedLabel}
+              onCopied={() => onCopied(s.code)}
+            />
+          </div>
+          <pre className="text-[10px] font-mono text-ovo-text bg-ovo-surface rounded p-2 overflow-x-auto border border-ovo-border whitespace-pre-wrap break-all leading-relaxed">{s.code}</pre>
+        </div>
+      ))}
+    </div>
+  );
+}
+// [END]
+
+// [START] AdvancedSection — collapsible LLM router dashboard
+const LS_KEY = "ovo:settings_advanced_open";
+
+interface AdvancedSectionProps {
+  ports: SidecarPorts;
+  models: OvoModel[];
+}
+
+function AdvancedSection({ ports, models }: AdvancedSectionProps) {
+  const { t } = useTranslation();
+  const pushToast = useToastsStore((s) => s.push);
+
+  // Collapse state — default closed, persisted to localStorage
+  const [open, setOpen] = useState<boolean>(() => {
+    try { return localStorage.getItem(LS_KEY) === "true"; } catch { return false; }
+  });
+
+  function toggleOpen() {
+    setOpen((prev) => {
+      const next = !prev;
+      try { localStorage.setItem(LS_KEY, String(next)); } catch { /* ignore */ }
+      return next;
+    });
+  }
+
+  // [START] Default model state — fetched from /ovo/settings on mount
+  const [defaultModel, setDefaultModel] = useState<string>("");
+  const [settingsSaved, setSettingsSaved] = useState(false);
+  const settingsFetchedRef = useRef(false);
+
+  useEffect(() => {
+    if (settingsFetchedRef.current) return;
+    settingsFetchedRef.current = true;
+    fetch(`http://127.0.0.1:${ports.native}/ovo/settings`)
+      .then((r) => r.json() as Promise<OvoServerSettings>)
+      .then((data) => {
+        setDefaultModel(data.default_model ?? "");
+      })
+      .catch((err) => console.warn("AdvancedSection: failed to fetch /ovo/settings", err));
+  }, [ports.native]);
+
+  async function handleDefaultModelChange(repoId: string) {
+    setDefaultModel(repoId);
+    try {
+      await fetch(`http://127.0.0.1:${ports.native}/ovo/settings`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ default_model: repoId === "" ? null : repoId }),
+      });
+      setSettingsSaved(true);
+      setTimeout(() => setSettingsSaved(false), 1500);
+    } catch (err) {
+      console.warn("AdvancedSection: failed to save default_model", err);
+    }
+  }
+  // [END]
+
+  // [START] Build curl snippets using current default_model or placeholder
+  const modelId = defaultModel || "<model-id>";
+  const ollamaBase = `http://localhost:${ports.ollama}`;
+  const openaiBase = `http://localhost:${ports.openai}/v1`;
+  const nativeBase = `http://localhost:${ports.native}`;
+
+  const ollamaSnippets = [
+    { label: "List models", code: `curl ${ollamaBase}/api/tags` },
+    {
+      label: "Generate (stream)",
+      code: `curl -X POST ${ollamaBase}/api/generate \\\n  -H 'Content-Type: application/json' \\\n  -d '{"model":"${modelId}","prompt":"Hello!","stream":true}'`,
+    },
+  ];
+
+  const openaiSnippets = [
+    { label: "List models", code: `curl ${openaiBase}/models` },
+    {
+      label: "Chat completions",
+      code: `curl -X POST ${openaiBase}/chat/completions \\\n  -H 'Content-Type: application/json' \\\n  -d '{"model":"${modelId}","messages":[{"role":"user","content":"Hello!"}]}'`,
+    },
+  ];
+
+  const nativeSnippets = [
+    { label: "List models", code: `curl ${nativeBase}/ovo/models` },
+    {
+      label: "Count tokens",
+      code: `curl -X POST ${nativeBase}/ovo/count_tokens \\\n  -H 'Content-Type: application/json' \\\n  -d '{"model":"${modelId}","messages":[{"role":"user","content":"Hello!"}]}'`,
+    },
+  ];
+  // [END]
+
+  function handleCopied(text: string) {
+    void text;
+    pushToast({ kind: "success", message: t("settings.advanced.endpoint_copied") });
+  }
+
+  const copyLabel = t("settings.advanced.endpoint_copy");
+  const copiedLabel = t("settings.advanced.endpoint_copied");
+
+  return (
+    <section className="py-4 border-b border-ovo-border">
+      {/* Header — always visible, clickable to collapse */}
+      <button
+        onClick={toggleOpen}
+        className="flex items-center gap-2 w-full text-left group"
+        type="button"
+      >
+        <ChevronDown
+          size={16}
+          className={`text-ovo-accent transition-transform duration-200 ${open ? "" : "-rotate-90"}`}
+        />
+        <h3 className="text-sm font-semibold text-ovo-text group-hover:text-ovo-accent transition-colors">
+          {t("settings.advanced.section_title")}
+        </h3>
+      </button>
+
+      {/* Description — always visible */}
+      <p className="mt-1 ml-6 text-xs text-ovo-muted">
+        {t("settings.advanced.description")}
+      </p>
+
+      {/* Collapsible body */}
+      {open && (
+        <div className="mt-4 flex flex-col gap-4">
+
+          {/* (a) Default model selector */}
+          {/* [START] default model selector — writes to /ovo/settings */}
+          <div>
+            <label className="text-xs font-medium text-ovo-muted mb-1 block">
+              {t("settings.advanced.default_model_label")}
+              {settingsSaved && (
+                <span className="ml-2 text-ovo-accent">✓</span>
+              )}
+            </label>
+            <select
+              value={defaultModel}
+              onChange={(e) => void handleDefaultModelChange(e.target.value)}
+              className="text-xs border border-ovo-border rounded px-2 py-1.5 bg-ovo-surface-solid text-ovo-text w-full max-w-sm"
+            >
+              <option value="">{t("settings.advanced.default_model_auto")}</option>
+              {models.map((m) => (
+                <option key={m.repo_id} value={m.repo_id}>
+                  {m.repo_id}
+                </option>
+              ))}
+            </select>
+          </div>
+          {/* [END] */}
+
+          {/* (b) 3 endpoint cards */}
+          {/* [START] endpoint cards grid */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <EndpointCard
+              name="Ollama"
+              baseUrl={ollamaBase}
+              snippets={ollamaSnippets}
+              copyLabel={copyLabel}
+              copiedLabel={copiedLabel}
+              onCopied={handleCopied}
+            />
+            <EndpointCard
+              name="OpenAI"
+              baseUrl={openaiBase}
+              snippets={openaiSnippets}
+              copyLabel={copyLabel}
+              copiedLabel={copiedLabel}
+              onCopied={handleCopied}
+            />
+            <EndpointCard
+              name="Native"
+              baseUrl={nativeBase}
+              snippets={nativeSnippets}
+              copyLabel={copyLabel}
+              copiedLabel={copiedLabel}
+              onCopied={handleCopied}
+            />
+          </div>
+          {/* [END] */}
+
+          {/* (c) Tool integration guides */}
+          {/* [START] tool guides — native <details> for zero-dependency collapse */}
+          <details className="border border-ovo-border rounded bg-ovo-chip">
+            <summary className="cursor-pointer px-3 py-2 text-xs font-semibold text-ovo-text select-none list-none flex items-center gap-1">
+              <ChevronDown size={12} className="text-ovo-accent" />
+              {t("settings.advanced.guides_title")}
+            </summary>
+            <div className="px-3 pb-3 flex flex-col gap-3 pt-2">
+              {(
+                [
+                  { key: "guide_cursor", label: "Cursor" },
+                  { key: "guide_continue", label: "Continue.dev" },
+                  { key: "guide_zed", label: "Zed" },
+                  { key: "guide_generic", label: "OpenAI SDK" },
+                ] as const
+              ).map(({ key, label }) => (
+                <div key={key}>
+                  <div className="text-[10px] font-semibold text-ovo-muted mb-1">{label}</div>
+                  <code className="text-[10px] font-mono text-ovo-text block bg-ovo-surface rounded p-2 border border-ovo-border whitespace-pre-wrap break-words leading-relaxed">
+                    {t(`settings.advanced.${key}`)}
+                  </code>
+                </div>
+              ))}
+            </div>
+          </details>
+          {/* [END] */}
+
+        </div>
+      )}
+    </section>
+  );
+}
+// [END]
+
+// [START] ThemeSection — 3-button theme selector (system / light / dark)
+const THEME_MODES: ThemeMode[] = ["system", "light", "dark"];
+
+function ThemeSection() {
+  const { t } = useTranslation();
+  const mode = useThemeStore((s) => s.mode);
+  const setMode = useThemeStore((s) => s.setMode);
+
+  return (
+    <section className="flex items-center justify-between py-3 border-b border-ovo-border">
+      <label className="text-sm text-ovo-text">{t("settings.theme")}</label>
+      <div className="inline-flex gap-1 rounded-md border border-ovo-border bg-ovo-surface p-0.5">
+        {THEME_MODES.map((m) => (
+          <button
+            key={m}
+            type="button"
+            onClick={() => setMode(m)}
+            className={`px-2.5 py-1 text-xs rounded transition ${
+              mode === m
+                ? "bg-ovo-accent text-ovo-accent-ink"
+                : "text-ovo-muted hover:text-ovo-text"
+            }`}
+          >
+            {t(`settings.themes.${m}`)}
+          </button>
+        ))}
+      </div>
+    </section>
+  );
+}
+// [END]
+
 // ── Main pane ─────────────────────────────────────────────────────────────────
 export function SettingsPane() {
   const { t } = useTranslation();
   const ports = useSidecarStore((s) => s.status.ports);
 
+  // Pet store
+  const petEnabled = usePetStore((s) => s.pet_enabled);
+  const setPetEnabled = usePetStore((s) => s.setPetEnabled);
+
   // Chat settings store
   const defaultStrategy = useChatSettingsStore((s) => s.default_strategy);
   const globalWarnThreshold = useChatSettingsStore((s) => s.global_warn_threshold);
   const streamingSendMode = useChatSettingsStore((s) => s.streaming_send_mode);
+  const soundEnabled = useChatSettingsStore((s) => s.sound_enabled);
+  const setSoundEnabled = useChatSettingsStore((s) => s.setSoundEnabled);
   const setDefaultStrategy = useChatSettingsStore((s) => s.setDefaultStrategy);
   const setGlobalWarnThreshold = useChatSettingsStore((s) => s.setGlobalWarnThreshold);
   const setStreamingSendMode = useChatSettingsStore((s) => s.setStreamingSendMode);
@@ -186,35 +521,24 @@ export function SettingsPane() {
   const overrideList = Object.values(overrides);
 
   return (
-    <div className="p-6 max-w-2xl">
-      <h2 className="text-lg font-semibold text-[#2C1810] mb-6">{t("nav.settings")}</h2>
+    <div className="h-full overflow-y-auto">
+      <div className="p-6 max-w-2xl">
+        <h2 className="text-lg font-semibold text-ovo-text mb-6">{t("nav.settings")}</h2>
 
-      <section className="flex items-center justify-between py-3 border-b border-[#E8CFBB]">
-        <label className="text-sm text-[#2C1810]">{t("settings.language")}</label>
+      <section className="flex items-center justify-between py-3 border-b border-ovo-border">
+        <label className="text-sm text-ovo-text">{t("settings.language")}</label>
         <LanguageToggle />
       </section>
 
-      <section className="py-3 border-b border-[#E8CFBB]">
-        <div className="text-sm text-[#2C1810] mb-2">{t("settings.ports")}</div>
-        <dl className="grid grid-cols-3 gap-2 text-xs">
-          <div className="bg-white/60 rounded p-2 border border-[#E8CFBB]">
-            <dt className="text-[#8B4432]">{t("sidecar.ports.ollama")}</dt>
-            <dd className="font-mono text-[#2C1810]">{ports.ollama}</dd>
-          </div>
-          <div className="bg-white/60 rounded p-2 border border-[#E8CFBB]">
-            <dt className="text-[#8B4432]">{t("sidecar.ports.openai")}</dt>
-            <dd className="font-mono text-[#2C1810]">{ports.openai}</dd>
-          </div>
-          <div className="bg-white/60 rounded p-2 border border-[#E8CFBB]">
-            <dt className="text-[#8B4432]">{t("sidecar.ports.native")}</dt>
-            <dd className="font-mono text-[#2C1810]">{ports.native}</dd>
-          </div>
-        </dl>
-      </section>
+      {/* [START] Theme selector — system / light / dark */}
+      <ThemeSection />
+      {/* [END] */}
+
+      <AdvancedSection ports={ports} models={models} />
 
       {/* [START] Chat input section — streaming send mode */}
-      <section className="py-4 border-b border-[#E8CFBB]">
-        <h3 className="text-sm font-semibold text-[#2C1810] mb-4">
+      <section className="py-4 border-b border-ovo-border">
+        <h3 className="text-sm font-semibold text-ovo-text mb-4">
           {t("settings.chat_input.section_title")}
         </h3>
         <div className="flex flex-col gap-3">
@@ -227,26 +551,38 @@ export function SettingsPane() {
                   value={m}
                   checked={streamingSendMode === m}
                   onChange={() => setStreamingSendMode(m)}
-                  className="accent-[#D97757]"
+                  className="accent-ovo-accent"
                 />
-                <span className="text-sm text-[#2C1810]">{t(streamingModeLabel(m))}</span>
+                <span className="text-sm text-ovo-text">{t(streamingModeLabel(m))}</span>
               </div>
-              <p className="ml-5 text-xs text-[#8B4432]">{t(streamingModeHelp(m))}</p>
+              <p className="ml-5 text-xs text-ovo-muted">{t(streamingModeHelp(m))}</p>
             </label>
           ))}
         </div>
+        {/* [START] Reply-complete sound toggle */}
+        <label className="mt-4 flex items-center gap-2 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={soundEnabled}
+            onChange={(e) => setSoundEnabled(e.target.checked)}
+            className="accent-ovo-accent"
+          />
+          <span className="text-sm text-ovo-text">{t("settings.chat_input.sound_label")}</span>
+        </label>
+        <p className="ml-6 text-xs text-ovo-muted">{t("settings.chat_input.sound_help")}</p>
+        {/* [END] */}
       </section>
       {/* [END] */}
 
       {/* [START] Context management section (R.6) */}
-      <section className="py-4 border-b border-[#E8CFBB]">
-        <h3 className="text-sm font-semibold text-[#2C1810] mb-4">
+      <section className="py-4 border-b border-ovo-border">
+        <h3 className="text-sm font-semibold text-ovo-text mb-4">
           {t("settings.context.section_title")}
         </h3>
 
         {/* Compact strategy radio */}
         <div className="mb-5">
-          <div className="text-xs font-medium text-[#8B4432] mb-2">
+          <div className="text-xs font-medium text-ovo-muted mb-2">
             {t("settings.context.strategy_label")}
           </div>
           <div className="flex flex-col gap-2">
@@ -258,9 +594,9 @@ export function SettingsPane() {
                   value={s}
                   checked={defaultStrategy === s}
                   onChange={() => setDefaultStrategy(s)}
-                  className="accent-[#D97757]"
+                  className="accent-ovo-accent"
                 />
-                <span className="text-sm text-[#2C1810]">{t(strategyKey(s))}</span>
+                <span className="text-sm text-ovo-text">{t(strategyKey(s))}</span>
               </label>
             ))}
           </div>
@@ -268,9 +604,9 @@ export function SettingsPane() {
 
         {/* Global warn threshold slider */}
         <div className="mb-5">
-          <div className="text-xs font-medium text-[#8B4432] mb-2">
+          <div className="text-xs font-medium text-ovo-muted mb-2">
             {t("settings.context.global_threshold_label")}
-            <span className="ml-2 font-mono text-[#D97757]">
+            <span className="ml-2 font-mono text-ovo-accent">
               {Math.round(globalWarnThreshold * 100)}%
             </span>
           </div>
@@ -281,9 +617,9 @@ export function SettingsPane() {
             step={0.05}
             value={globalWarnThreshold}
             onChange={(e) => setGlobalWarnThreshold(Number(e.target.value))}
-            className="w-full max-w-xs accent-[#D97757]"
+            className="w-full max-w-xs accent-ovo-accent"
           />
-          <div className="flex justify-between text-[10px] text-[#8B4432] max-w-xs mt-1">
+          <div className="flex justify-between text-[10px] text-ovo-muted max-w-xs mt-1">
             <span>50%</span>
             <span>95%</span>
           </div>
@@ -291,14 +627,14 @@ export function SettingsPane() {
 
         {/* Model override table */}
         <div>
-          <div className="text-xs font-medium text-[#8B4432] mb-2">
+          <div className="text-xs font-medium text-ovo-muted mb-2">
             {t("settings.context.overrides_title")}
           </div>
 
-          <div className="overflow-x-auto rounded border border-[#E8CFBB]">
+          <div className="overflow-x-auto rounded border border-ovo-border">
             <table className="w-full text-xs">
               <thead>
-                <tr className="bg-[#E8CFBB]/40 text-[#8B4432]">
+                <tr className="bg-ovo-border/40 text-ovo-muted">
                   <th className="px-3 py-2 text-left font-medium">
                     {t("settings.context.overrides_column_repo")}
                   </th>
@@ -313,32 +649,32 @@ export function SettingsPane() {
                   </th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-[#E8CFBB]">
+              <tbody className="divide-y divide-ovo-border">
                 {/* Auto-detected rows — models without overrides */}
                 {models
                   .filter((m) => !overrides[m.repo_id])
                   .map((m) => (
-                    <tr key={m.repo_id} className="bg-white/40">
-                      <td className="px-3 py-2 font-mono text-[#8B4432] truncate max-w-[180px]">
+                    <tr key={m.repo_id} className="bg-ovo-chip">
+                      <td className="px-3 py-2 font-mono text-ovo-muted truncate max-w-[180px]">
                         {m.repo_id}
                       </td>
-                      <td className="px-3 py-2 font-mono text-[#8B4432]">
+                      <td className="px-3 py-2 font-mono text-ovo-muted">
                         {m.max_context ?? "—"}
-                        <span className="ml-1 text-[10px] text-[#8B4432]/60">
+                        <span className="ml-1 text-[10px] text-ovo-muted/60">
                           ({t("settings.context.overrides_auto_detected")})
                         </span>
                       </td>
-                      <td className="px-3 py-2 text-[#8B4432]/60">
+                      <td className="px-3 py-2 text-ovo-muted/60">
                         {Math.round(globalWarnThreshold * 100)}%
                       </td>
-                      <td className="px-3 py-2 text-[#8B4432]/40">—</td>
+                      <td className="px-3 py-2 text-ovo-muted/40">—</td>
                     </tr>
                   ))}
 
                 {/* Override rows — editable */}
                 {overrideList.map((ov) => (
-                  <tr key={ov.repo_id} className="bg-white">
-                    <td className="px-3 py-2 font-mono text-[#2C1810] truncate max-w-[180px]">
+                  <tr key={ov.repo_id} className="bg-ovo-surface-solid">
+                    <td className="px-3 py-2 font-mono text-ovo-text truncate max-w-[180px]">
                       {ov.repo_id}
                     </td>
                     <td className="px-3 py-2">
@@ -351,7 +687,7 @@ export function SettingsPane() {
                         onBlur={(e) =>
                           void handleSaveOverrideMaxContext(ov.repo_id, Number(e.target.value))
                         }
-                        className="text-xs border border-[#E8CFBB] rounded px-2 py-1 bg-white text-[#2C1810] w-24 font-mono"
+                        className="text-xs border border-ovo-border rounded px-2 py-1 bg-ovo-surface-solid text-ovo-text w-24 font-mono"
                       />
                     </td>
                     <td className="px-3 py-2">
@@ -370,9 +706,9 @@ export function SettingsPane() {
                           }
                           onMouseUp={() => void handleSaveOverrideThreshold(ov.repo_id)}
                           onTouchEnd={() => void handleSaveOverrideThreshold(ov.repo_id)}
-                          className="w-20 accent-[#D97757]"
+                          className="w-20 accent-ovo-accent"
                         />
-                        <span className="text-xs text-[#8B4432] w-8">
+                        <span className="text-xs text-ovo-muted w-8">
                           {Math.round(getDisplayThreshold(ov.repo_id) * 100)}%
                         </span>
                       </div>
@@ -384,7 +720,7 @@ export function SettingsPane() {
                             void removeOverride(ov.repo_id);
                           }
                         }}
-                        className="text-xs px-2 py-1 rounded bg-[#E8CFBB] text-[#2C1810] hover:bg-rose-100 hover:text-rose-700 transition"
+                        className="text-xs px-2 py-1 rounded bg-ovo-border text-ovo-text hover:bg-rose-100 hover:text-rose-700 transition"
                       >
                         ✕
                       </button>
@@ -411,7 +747,7 @@ export function SettingsPane() {
                   <tr>
                     <td
                       colSpan={4}
-                      className="px-3 py-4 text-center text-xs text-[#8B4432]/60"
+                      className="px-3 py-4 text-center text-xs text-ovo-muted/60"
                     >
                       {t("settings.context.overrides_empty")}
                     </td>
@@ -424,7 +760,7 @@ export function SettingsPane() {
           {!addingRow && (
             <button
               onClick={() => setAddingRow(true)}
-              className="mt-3 text-xs px-3 py-1.5 rounded bg-[#E8CFBB] text-[#2C1810] hover:bg-[#D97757] hover:text-white transition"
+              className="mt-3 text-xs px-3 py-1.5 rounded bg-ovo-border text-ovo-text hover:bg-ovo-accent hover:text-white transition"
             >
               {t("settings.context.overrides_add")}
             </button>
@@ -432,6 +768,27 @@ export function SettingsPane() {
         </div>
       </section>
       {/* [END] */}
+
+      {/* [START] Phase 7 — Desktop Pet toggle */}
+      <section className="py-4 border-b border-ovo-border">
+        <h3 className="text-sm font-semibold text-ovo-text mb-4">
+          {t("settings.pet.section_title")}
+        </h3>
+        <label className="flex flex-col gap-0.5 cursor-pointer">
+          <div className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              checked={petEnabled}
+              onChange={(e) => void setPetEnabled(e.target.checked)}
+              className="accent-ovo-accent w-4 h-4"
+            />
+            <span className="text-sm text-ovo-text">{t("settings.pet.enable_label")}</span>
+          </div>
+          <p className="ml-6 text-xs text-ovo-muted">{t("settings.pet.enable_help")}</p>
+        </label>
+      </section>
+      {/* [END] */}
+      </div>
     </div>
   );
 }

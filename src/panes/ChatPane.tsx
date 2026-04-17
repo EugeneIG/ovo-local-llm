@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Trash2 } from "lucide-react";
 import { listModels } from "../lib/api";
+import { isChatCapableModel } from "../lib/models";
 import { useSidecarStore } from "../store/sidecar";
 import { useChatStore } from "../store/chat";
 import { useSessionsStore } from "../store/sessions";
@@ -17,7 +17,6 @@ export function ChatPane() {
   const status = useSidecarStore((s) => s.status);
 
   const streaming = useChatStore((s) => s.streaming);
-  const owlState = useChatStore((s) => s.owlState);
   const error = useChatStore((s) => s.error);
   const sendMessage = useChatStore((s) => s.sendMessage);
   const stopStreaming = useChatStore((s) => s.stopStreaming);
@@ -31,7 +30,6 @@ export function ChatPane() {
   const messages = useSessionsStore((s) => s.messages);
   const loadSessions = useSessionsStore((s) => s.loadSessions);
   const selectSession = useSessionsStore((s) => s.selectSession);
-  const clearCurrentMessages = useSessionsStore((s) => s.clearCurrentMessages);
   const setSessionModel = useSessionsStore((s) => s.setSessionModel);
 
   const currentSession = sessions.find((s) => s.id === currentSessionId) ?? null;
@@ -57,12 +55,16 @@ export function ChatPane() {
     listModels(status.ports)
       .then((resp) => {
         if (cancelled) return;
-        setModels(resp.models);
+        // [START] Filter out TTS / STT / embedding models from chat picker —
+        // still visible in Models tab, just not selectable for conversation.
+        const chatModels = resp.models.filter(isChatCapableModel);
+        setModels(chatModels);
+        // [END]
         setModelsError(null);
         // [START] Lazy default model — if no current session yet, remember the
         // first model so the "lazy create session" path on first send picks it.
-        if (!currentModel && resp.models.length > 0 && currentSessionId) {
-          void setSessionModel(currentSessionId, resp.models[0].repo_id);
+        if (!currentModel && chatModels.length > 0 && currentSessionId) {
+          void setSessionModel(currentSessionId, chatModels[0].repo_id);
         }
         // [END]
       })
@@ -119,34 +121,29 @@ export function ChatPane() {
   const allowTypeDuringStreaming = streamingSendMode !== "block";
   // [END]
 
+  // [START] Phase B — resolve current model capabilities so ChatInput can gate file accept types
+  const currentModelObj = effectiveModel ? models.find((m) => m.repo_id === effectiveModel) ?? null : null;
+  const currentCapabilities = currentModelObj?.capabilities ?? [];
+  // [END]
+
   // Ignore selectSession passthrough until the Recents sidebar is added in R.3.
   void selectSession;
 
   return (
     <div className="h-full flex flex-col">
-      <header className="flex items-center justify-between gap-3 px-4 py-2 border-b border-[#E8CFBB] bg-white/40">
+      {/* [START] Header — centered ModelSelector (owl removed, trash relocated) */}
+      <header
+        data-tauri-drag-region
+        className="flex items-center justify-center gap-3 px-4 py-2 border-b border-ovo-border bg-ovo-surface"
+      >
         <ModelSelector
           models={models}
           value={effectiveModel}
           onChange={(m) => void handleModelChange(m)}
           disabled={!sidecarReady}
         />
-        <div className="flex items-center gap-3">
-          <Owl state={owlState} size="xs" />
-          {hasMessages && (
-            <button
-              type="button"
-              onClick={() => void clearCurrentMessages()}
-              disabled={streaming}
-              className="p-1.5 rounded-md text-[#8B4432] hover:bg-white/60 disabled:opacity-40 disabled:cursor-not-allowed transition"
-              aria-label={t("chat.clear")}
-              title={t("chat.clear")}
-            >
-              <Trash2 className="w-4 h-4" aria-hidden />
-            </button>
-          )}
-        </div>
       </header>
+      {/* [END] */}
 
       <div
         ref={listRef}
@@ -154,7 +151,7 @@ export function ChatPane() {
         className="flex-1 overflow-y-auto px-4 py-4"
       >
         {!sidecarReady ? (
-          <div className="h-full flex items-center justify-center text-sm text-[#8B4432]">
+          <div className="h-full flex items-center justify-center text-sm text-ovo-muted">
             {t(`sidecar.status.${status.health}`)}…
           </div>
         ) : modelsError ? (
@@ -162,7 +159,7 @@ export function ChatPane() {
             {t("chat.error_prefix")}: {modelsError}
           </div>
         ) : !hasMessages ? (
-          <div className="h-full flex flex-col items-center justify-center gap-4 text-[#8B4432]">
+          <div className="h-full flex flex-col items-center justify-center gap-4 text-ovo-muted">
             <Owl state="idle" size="lg" />
             <p className="text-sm">{t("chat.empty")}</p>
           </div>
@@ -185,16 +182,16 @@ export function ChatPane() {
         </div>
       )}
       {error === "no_model" && (
-        <div className="px-4 py-2 text-xs text-[#8B4432] bg-[#FAF3E7] border-t border-[#E8CFBB]">
+        <div className="px-4 py-2 text-xs text-ovo-muted bg-ovo-bg border-t border-ovo-border">
           {t("chat.no_model")}
         </div>
       )}
       {compacting && (
-        <div className="px-4 py-2 text-xs text-[#8B4432] bg-[#FAF3E7] border-t border-[#E8CFBB] flex items-center gap-2">
+        <div className="px-4 py-2 text-xs text-ovo-muted bg-ovo-bg border-t border-ovo-border flex items-center gap-2">
           <span className="inline-flex gap-0.5" aria-hidden>
-            <span className="w-1 h-1 rounded-full bg-[#8B4432] animate-bounce [animation-delay:-0.3s]" />
-            <span className="w-1 h-1 rounded-full bg-[#8B4432] animate-bounce [animation-delay:-0.15s]" />
-            <span className="w-1 h-1 rounded-full bg-[#8B4432] animate-bounce" />
+            <span className="w-1 h-1 rounded-full bg-ovo-muted animate-bounce [animation-delay:-0.3s]" />
+            <span className="w-1 h-1 rounded-full bg-ovo-muted animate-bounce [animation-delay:-0.15s]" />
+            <span className="w-1 h-1 rounded-full bg-ovo-muted animate-bounce" />
           </span>
           {t("compact.in_progress")}
         </div>
@@ -207,6 +204,7 @@ export function ChatPane() {
         disabled={inputDisabled}
         allowTypeDuringStreaming={allowTypeDuringStreaming}
         queueCount={queueCount}
+        modelCapabilities={currentCapabilities}
       />
     </div>
   );

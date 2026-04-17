@@ -18,19 +18,19 @@ export function SidecarIndicator() {
   const total = 3;
 
   return (
-    <div className="flex items-center gap-3 px-3 py-2 rounded-lg bg-white/60 border border-[#E8CFBB]">
+    <div className="flex items-center gap-3 px-3 py-2 rounded-lg bg-ovo-surface border border-ovo-border">
       <span className={`inline-block w-2.5 h-2.5 rounded-full ${DOT_COLORS[status.health]}`} />
       <div className="flex flex-col min-w-0">
-        <span className="text-xs font-medium text-[#2C1810]">
+        <span className="text-xs font-medium text-ovo-text">
           {t(`sidecar.status.${status.health}`)}
         </span>
-        <span className="text-[10px] text-[#8B4432] tabular-nums">
+        <span className="text-[10px] text-ovo-muted tabular-nums">
           {apis}/{total} APIs · PID {status.pid ?? "—"}
         </span>
       </div>
       <button
         onClick={() => void restart()}
-        className="ml-auto text-[11px] px-2 py-1 rounded bg-[#D97757] text-white hover:bg-[#B85D3F] transition disabled:opacity-50"
+        className="ml-auto text-[11px] px-2 py-1 rounded bg-ovo-accent text-ovo-accent-ink hover:bg-ovo-accent-hover transition disabled:opacity-50"
         disabled={status.health === "starting"}
       >
         {status.health === "starting" ? t("sidecar.restarting") : t("sidecar.restart")}

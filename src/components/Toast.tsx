@@ -18,7 +18,7 @@ function ToastItem({ toast }: { toast: Toast }) {
       ? "bg-emerald-600"
       : toast.kind === "error"
         ? "bg-rose-600"
-        : "bg-[#2C1810]";
+        : "bg-ovo-text";
 
   return (
     <div

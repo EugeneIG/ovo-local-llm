@@ -11,13 +11,19 @@ import { useSessionsStore } from "./sessions";
 import { updateMessageContent } from "../db/sessions";
 import { maybeAutoCompact } from "../lib/compact";
 import { useChatSettingsStore } from "./chat_settings";
+// [START] model_perf — import performance tracking store
+import { useModelPerfStore } from "./model_perf";
+// [END]
+// [START] Phase A — attachment persistence helpers
+import { saveAttachment, readAttachmentAsDataUrl } from "../lib/attachmentStorage";
+// [END]
 
 // [START] Attachment → OpenAI content-parts conversion.
-// Files are base64'd via FileReader; previewDataUrl is reused when already computed
-// for the image preview to avoid a redundant read. URL attachments pass through
-// as image_url parts (server decides whether to fetch). Non-image files are
-// skipped — VLMs only accept images today, and forwarding e.g. a PDF as an image
-// URL would just trigger a PIL failure server-side.
+// stored kind: read bytes from disk via readAttachmentAsDataUrl and inline.
+// url kind: pass through as image_url (server fetches).
+// file kind (in-flight, should not reach here after Phase A save flow):
+//   fall back to FileReader base64 for resilience.
+// image/* → image_url part; audio/* → input_audio part; others skipped.
 function fileToDataUrl(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -27,6 +33,28 @@ function fileToDataUrl(file: File): Promise<string> {
     reader.readAsDataURL(file);
   });
 }
+
+// [START] Phase B — MIME → audio format string mapping
+// "audio/mpeg" → "mp3", "audio/wav" → "wav", "audio/x-m4a" | "audio/mp4" → "m4a", etc.
+function audioMimeToFormat(mime: string): string {
+  const sub = mime.split("/")[1] ?? "bin";
+  const map: Record<string, string> = {
+    mpeg: "mp3",
+    "x-m4a": "m4a",
+    mp4: "m4a",
+    ogg: "ogg",
+    flac: "flac",
+    webm: "webm",
+  };
+  return map[sub] ?? sub;
+}
+
+// Strip "data:...;base64," prefix from a data URL, returning just the base64 payload.
+function stripDataUrlPrefix(dataUrl: string): string {
+  const idx = dataUrl.indexOf(",");
+  return idx >= 0 ? dataUrl.slice(idx + 1) : dataUrl;
+}
+// [END]
 
 async function messageToWire(m: Message): Promise<ChatWireMessage> {
   const atts = m.attachments ?? [];
@@ -39,12 +67,61 @@ async function messageToWire(m: Message): Promise<ChatWireMessage> {
       parts.push({ type: "image_url", image_url: { url: a.url } });
       continue;
     }
-    if (!a.file.type.startsWith("image/")) continue;
-    const url = a.previewDataUrl ?? (await fileToDataUrl(a.file));
-    if (url) parts.push({ type: "image_url", image_url: { url } });
+    if (a.kind === "stored") {
+      const mime = a.meta.mime;
+      if (mime.startsWith("image/")) {
+        const dataUrl = await readAttachmentAsDataUrl(a.meta);
+        if (dataUrl) parts.push({ type: "image_url", image_url: { url: dataUrl } });
+      } else if (mime.startsWith("audio/")) {
+        // [START] Phase B — audio stored attachment → input_audio part
+        const dataUrl = await readAttachmentAsDataUrl(a.meta);
+        if (dataUrl) {
+          parts.push({
+            type: "input_audio",
+            input_audio: { data: stripDataUrlPrefix(dataUrl), format: audioMimeToFormat(mime) },
+          });
+        }
+        // [END]
+      }
+      continue;
+    }
+    // file kind — resilience fallback (save first then convert)
+    const fileMime = a.file.type;
+    if (fileMime.startsWith("image/")) {
+      try {
+        const meta = await saveAttachment(a.file);
+        const dataUrl = await readAttachmentAsDataUrl(meta);
+        if (dataUrl) parts.push({ type: "image_url", image_url: { url: dataUrl } });
+      } catch {
+        // Last resort: FileReader
+        const url = a.previewDataUrl ?? (await fileToDataUrl(a.file));
+        if (url) parts.push({ type: "image_url", image_url: { url } });
+      }
+    } else if (fileMime.startsWith("audio/")) {
+      // [START] Phase B — audio file attachment → input_audio part
+      try {
+        const meta = await saveAttachment(a.file);
+        const dataUrl = await readAttachmentAsDataUrl(meta);
+        if (dataUrl) {
+          parts.push({
+            type: "input_audio",
+            input_audio: { data: stripDataUrlPrefix(dataUrl), format: audioMimeToFormat(fileMime) },
+          });
+        }
+      } catch {
+        const dataUrl = await fileToDataUrl(a.file);
+        if (dataUrl) {
+          parts.push({
+            type: "input_audio",
+            input_audio: { data: stripDataUrlPrefix(dataUrl), format: audioMimeToFormat(fileMime) },
+          });
+        }
+      }
+      // [END]
+    }
   }
-  const hasImage = parts.some((p) => p.type === "image_url");
-  return { role, content: hasImage ? parts : m.content };
+  const hasMultimodal = parts.some((p) => p.type === "image_url" || p.type === "input_audio");
+  return { role, content: hasMultimodal ? parts : m.content };
 }
 // [END]
 
@@ -120,12 +197,34 @@ export const useChatStore = create<ChatStoreState>((set, get) => {
     }
     // [END]
 
+    // [START] Phase A — Convert file-kind attachments to stored-kind before persist.
+    // This ensures DB row contains a reference (meta), not a lost File blob.
+    let persistableAttachments: typeof attachments = attachments;
+    if (attachments && attachments.length > 0) {
+      persistableAttachments = await Promise.all(
+        attachments.map(async (a) => {
+          if (a.kind !== "file") return a;
+          try {
+            const meta = await saveAttachment(a.file);
+            return { kind: "stored" as const, id: a.id, meta };
+          } catch {
+            // Save failed — fall back to url kind with previewDataUrl if available
+            if (a.previewDataUrl) {
+              return { kind: "url" as const, id: a.id, url: a.previewDataUrl };
+            }
+            return a;
+          }
+        }),
+      );
+    }
+    // [END]
+
     // Persist the user turn first so message history survives refresh.
     await useSessionsStore.getState().appendMessage({
       session_id: sessionId,
       role: "user",
       content: trimmed,
-      attachments: attachments ?? null,
+      attachments: persistableAttachments ?? null,
     });
 
     // Create a placeholder assistant row; stream deltas will patch it.
@@ -173,6 +272,15 @@ export const useChatStore = create<ChatStoreState>((set, get) => {
         total_tokens: number;
       } | null = null;
 
+      // [START] model_perf — timing + token-count instrumentation.
+      // deltaCount increments on every delta frame; mlx-lm streams one token
+      // per frame so this matches the true generation_tokens even when the
+      // sidecar's usage report is missing or incomplete.
+      const ttftStart = performance.now();
+      let firstTokenAt: number | null = null;
+      let deltaCount = 0;
+      // [END]
+
       for await (const frame of streamChat(
         { model: modelRef, messages: wire },
         abortController.signal,
@@ -185,9 +293,13 @@ export const useChatStore = create<ChatStoreState>((set, get) => {
         if (!frame.delta) continue;
         if (!receivedAny) {
           receivedAny = true;
+          // [START] model_perf — capture first-token timestamp
+          firstTokenAt = performance.now();
+          // [END]
           set({ owlState: "typing" });
         }
         accumulated += frame.delta;
+        deltaCount += 1;
         scheduleFlush();
       }
       flushNow();
@@ -206,9 +318,50 @@ export const useChatStore = create<ChatStoreState>((set, get) => {
         void maybeAutoCompact(sessionId);
         // [END]
       }
+
+      // [START] model_perf — record on every successful stream end.
+      // Token count priority (most → least accurate):
+      //   1. finalUsage.completion_tokens — exact count from sidecar tokenizer
+      //   2. deltaCount — mlx-lm streams 1 token per frame, so the number of
+      //      delta frames equals the true generation token count
+      //   3. accumulated.length / 4 — last-resort OpenAI-style heuristic
+      //      (under-counts Korean; only used if both signals above fail)
+      if (firstTokenAt !== null) {
+        const ttft_ms = firstTokenAt - ttftStart;
+        const gen_ms = performance.now() - firstTokenAt;
+        const reportedGen = finalUsage?.completion_tokens ?? 0;
+        const gen_tokens =
+          reportedGen > 0
+            ? reportedGen
+            : deltaCount > 0
+              ? deltaCount
+              : Math.max(1, Math.round(accumulated.length / 4));
+        useModelPerfStore.getState().record(modelRef, {
+          ttft_ms,
+          gen_tokens,
+          gen_ms,
+          prompt_tokens: finalUsage?.prompt_tokens ?? 0,
+          recorded_at: Date.now(),
+        });
+      }
+      // [END]
       // [END]
 
       set({ streaming: false, owlState: "happy", abortController: null });
+      // [START] Reply-complete sound (owl hoot). Best-effort — silent on
+      // autoplay-policy rejection or missing audio asset.
+      if (useChatSettingsStore.getState().sound_enabled) {
+        try {
+          const audio = new Audio("/owl-hoot.mp3");
+          audio.volume = 0.6;
+          void audio.play().catch(() => {
+            /* autoplay blocked — ignore */
+          });
+        } catch {
+          /* Audio API unavailable — ignore */
+        }
+      }
+      // [END]
       setTimeout(() => {
         if (!get().streaming) set({ owlState: "idle" });
       }, 1800);

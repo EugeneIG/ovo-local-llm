@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type ChangeEvent, type KeyboardEvent } from "react";
 import { useTranslation } from "react-i18next";
 import { Send, Square, Plus, Upload, Link as LinkIcon } from "lucide-react";
-import type { ChatAttachment } from "../types/ovo";
+import type { ChatAttachment, ModelCapability } from "../types/ovo";
 import { AttachmentChip } from "./AttachmentChip";
 
 interface Props {
@@ -12,6 +12,9 @@ interface Props {
   // [START] streaming send mode props
   allowTypeDuringStreaming?: boolean;
   queueCount?: number;
+  // [END]
+  // [START] Phase B — model capabilities gate attach accept types
+  modelCapabilities?: ModelCapability[];
   // [END]
 }
 
@@ -30,7 +33,7 @@ function genId(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
 
-export function ChatInput({ onSend, onStop, streaming, disabled, allowTypeDuringStreaming = false, queueCount = 0 }: Props) {
+export function ChatInput({ onSend, onStop, streaming, disabled, allowTypeDuringStreaming = false, queueCount = 0, modelCapabilities = [] }: Props) {
   const { t } = useTranslation();
   const [value, setValue] = useState("");
   const [attachments, setAttachments] = useState<ChatAttachment[]>([]);
@@ -62,6 +65,20 @@ export function ChatInput({ onSend, onStop, streaming, disabled, allowTypeDuring
   // [START] textarea disabled logic — allow typing during streaming for queue/interrupt modes
   const textareaDisabled = disabled || (streaming && !allowTypeDuringStreaming);
   const canSubmit = (value.trim().length > 0 || attachments.length > 0) && !disabled && (allowTypeDuringStreaming || !streaming);
+  // [END]
+
+  // [START] Phase B — dynamic file accept based on model capabilities
+  const hasVision = modelCapabilities.includes("vision");
+  const hasAudio = modelCapabilities.includes("audio");
+  const fileAccept = hasVision && hasAudio
+    ? "image/*,audio/*"
+    : hasVision
+      ? "image/*"
+      : hasAudio
+        ? "audio/*"
+        : "*/*";
+  // Attach button disabled when model is text-only (no vision, no audio)
+  const attachSupported = hasVision || hasAudio;
   // [END]
 
   const submit = () => {
@@ -122,14 +139,14 @@ export function ChatInput({ onSend, onStop, streaming, disabled, allowTypeDuring
   };
 
   return (
-    <div className="p-3 bg-white/60 border-t border-[#E8CFBB]">
+    <div className="p-3 bg-ovo-surface border-t border-ovo-border">
       {/* [START] queue badge — shown when messages are waiting */}
       {queueCount > 0 && (
-        <div className="mb-2 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-[#FAF3E7] border border-[#E8CFBB] text-xs text-[#8B4432]">
+        <div className="mb-2 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-ovo-bg border border-ovo-border text-xs text-ovo-muted">
           <span className="inline-flex gap-0.5" aria-hidden>
-            <span className="w-1 h-1 rounded-full bg-[#D97757] animate-bounce [animation-delay:-0.3s]" />
-            <span className="w-1 h-1 rounded-full bg-[#D97757] animate-bounce [animation-delay:-0.15s]" />
-            <span className="w-1 h-1 rounded-full bg-[#D97757] animate-bounce" />
+            <span className="w-1 h-1 rounded-full bg-ovo-accent animate-bounce [animation-delay:-0.3s]" />
+            <span className="w-1 h-1 rounded-full bg-ovo-accent animate-bounce [animation-delay:-0.15s]" />
+            <span className="w-1 h-1 rounded-full bg-ovo-accent animate-bounce" />
           </span>
           {t("chat.queue_badge", { count: queueCount })}
         </div>
@@ -147,26 +164,26 @@ export function ChatInput({ onSend, onStop, streaming, disabled, allowTypeDuring
           <button
             type="button"
             onClick={() => setMenuOpen((v) => !v)}
-            disabled={disabled}
-            aria-label={t("chat.attach")}
-            title={t("chat.attach")}
-            className="h-[40px] w-[40px] rounded-lg bg-white border border-[#E8CFBB] text-[#8B4432] hover:bg-[#FAF3E7] hover:text-[#2C1810] disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center transition"
+            disabled={disabled || !attachSupported}
+            aria-label={attachSupported ? t("chat.attach") : t("chat.attach_unsupported")}
+            title={attachSupported ? t("chat.attach") : t("chat.attach_unsupported")}
+            className="h-[40px] w-[40px] rounded-lg bg-ovo-surface-solid border border-ovo-border text-ovo-muted hover:bg-ovo-bg hover:text-ovo-text disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center transition"
           >
             <Plus className="w-4 h-4" aria-hidden />
           </button>
           {menuOpen && (
-            <div className="absolute z-20 bottom-full mb-1 left-0 min-w-[220px] rounded-lg bg-white border border-[#E8CFBB] shadow-lg py-1">
+            <div className="absolute z-20 bottom-full mb-1 left-0 min-w-[220px] rounded-lg bg-ovo-surface-solid border border-ovo-border shadow-lg py-1">
               <button
                 type="button"
                 onClick={onPickFiles}
-                className="w-full text-left px-3 py-2 flex items-center gap-2 text-sm text-[#2C1810] hover:bg-[#FAF3E7] transition"
+                className="w-full text-left px-3 py-2 flex items-center gap-2 text-sm text-ovo-text hover:bg-ovo-bg transition"
               >
-                <Upload className="w-4 h-4 text-[#8B4432]" aria-hidden />
+                <Upload className="w-4 h-4 text-ovo-muted" aria-hidden />
                 {t("chat.attach_file")}
               </button>
               {urlMode ? (
                 <div className="px-3 py-2 flex items-center gap-2">
-                  <LinkIcon className="w-4 h-4 text-[#8B4432] shrink-0" aria-hidden />
+                  <LinkIcon className="w-4 h-4 text-ovo-muted shrink-0" aria-hidden />
                   <input
                     ref={urlInputRef}
                     type="url"
@@ -174,12 +191,12 @@ export function ChatInput({ onSend, onStop, streaming, disabled, allowTypeDuring
                     onChange={(e) => setUrlValue(e.target.value)}
                     onKeyDown={onUrlKeyDown}
                     placeholder={t("chat.url_placeholder")}
-                    className="flex-1 min-w-0 text-sm bg-transparent border-0 border-b border-[#E8CFBB] focus:border-[#D97757] focus:outline-none text-[#2C1810] placeholder:text-[#B89888] py-1"
+                    className="flex-1 min-w-0 text-sm bg-transparent border-0 border-b border-ovo-border focus:border-ovo-accent focus:outline-none text-ovo-text placeholder:text-ovo-muted py-1"
                   />
                   <button
                     type="button"
                     onClick={onConfirmUrl}
-                    className="text-xs text-[#D97757] hover:text-[#B85D3F]"
+                    className="text-xs text-ovo-accent hover:text-ovo-accent-hover"
                   >
                     OK
                   </button>
@@ -188,9 +205,9 @@ export function ChatInput({ onSend, onStop, streaming, disabled, allowTypeDuring
                 <button
                   type="button"
                   onClick={() => setUrlMode(true)}
-                  className="w-full text-left px-3 py-2 flex items-center gap-2 text-sm text-[#2C1810] hover:bg-[#FAF3E7] transition"
+                  className="w-full text-left px-3 py-2 flex items-center gap-2 text-sm text-ovo-text hover:bg-ovo-bg transition"
                 >
-                  <LinkIcon className="w-4 h-4 text-[#8B4432]" aria-hidden />
+                  <LinkIcon className="w-4 h-4 text-ovo-muted" aria-hidden />
                   {t("chat.attach_url")}
                 </button>
               )}
@@ -200,7 +217,7 @@ export function ChatInput({ onSend, onStop, streaming, disabled, allowTypeDuring
             ref={fileInputRef}
             type="file"
             multiple
-            accept="*/*"
+            accept={fileAccept}
             onChange={onFilesSelected}
             className="hidden"
           />
@@ -212,7 +229,7 @@ export function ChatInput({ onSend, onStop, streaming, disabled, allowTypeDuring
           placeholder={t("chat.placeholder")}
           rows={1}
           disabled={textareaDisabled}
-          className="flex-1 resize-none max-h-40 min-h-[40px] px-3 py-2 rounded-lg bg-white border border-[#E8CFBB] text-sm text-[#2C1810] placeholder:text-[#B89888] focus:outline-none focus:border-[#D97757] focus:ring-1 focus:ring-[#D97757] disabled:opacity-50"
+          className="flex-1 resize-none max-h-40 min-h-[40px] px-3 py-2 rounded-lg bg-ovo-surface-solid border border-ovo-border text-sm text-ovo-text placeholder:text-ovo-muted focus:outline-none focus:border-ovo-accent focus:ring-1 focus:ring-ovo-accent disabled:opacity-50"
         />
         {streaming ? (
           <button
@@ -230,7 +247,7 @@ export function ChatInput({ onSend, onStop, streaming, disabled, allowTypeDuring
             onClick={submit}
             disabled={!canSubmit}
             aria-label={t("chat.send")}
-            className="h-[40px] px-3 rounded-lg bg-[#D97757] hover:bg-[#B85D3F] disabled:opacity-40 disabled:cursor-not-allowed text-white text-sm flex items-center gap-1.5 transition"
+            className="h-[40px] px-3 rounded-lg bg-ovo-accent hover:bg-ovo-accent-hover disabled:opacity-40 disabled:cursor-not-allowed text-ovo-accent-ink text-sm flex items-center gap-1.5 transition"
           >
             <Send className="w-3.5 h-3.5" aria-hidden />
             {t("chat.send")}

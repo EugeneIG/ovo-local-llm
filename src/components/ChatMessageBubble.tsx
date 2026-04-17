@@ -156,11 +156,11 @@ function ThinkBlock({ content, open }: { content: string; open: boolean }) {
   const label = open ? t("chat.thinking") : t("chat.thought");
 
   return (
-    <div className="my-1 border-l-2 border-[#E8CFBB] pl-2">
+    <div className="mt-1 mb-3 border-l-2 border-ovo-chip-border pl-2">
       <button
         type="button"
         onClick={toggle}
-        className="flex items-center gap-1 text-[11px] text-[#8B4432] hover:text-[#2C1810] transition-colors"
+        className="flex items-center gap-1 text-[11px] text-ovo-muted hover:text-ovo-text transition-colors"
       >
         <ChevronDown
           className={`w-3 h-3 transition-transform ${expanded ? "" : "-rotate-90"}`}
@@ -169,14 +169,14 @@ function ThinkBlock({ content, open }: { content: string; open: boolean }) {
         <span>{label}</span>
         {open && (
           <span className="inline-flex gap-0.5 ml-1" aria-hidden>
-            <span className="w-1 h-1 rounded-full bg-[#8B4432] animate-bounce [animation-delay:-0.3s]" />
-            <span className="w-1 h-1 rounded-full bg-[#8B4432] animate-bounce [animation-delay:-0.15s]" />
-            <span className="w-1 h-1 rounded-full bg-[#8B4432] animate-bounce" />
+            <span className="w-1 h-1 rounded-full bg-ovo-muted animate-bounce [animation-delay:-0.3s]" />
+            <span className="w-1 h-1 rounded-full bg-ovo-muted animate-bounce [animation-delay:-0.15s]" />
+            <span className="w-1 h-1 rounded-full bg-ovo-muted animate-bounce" />
           </span>
         )}
       </button>
       {expanded && content.length > 0 && (
-        <div className="mt-1 text-xs text-[#8B4432]/90 whitespace-pre-wrap leading-relaxed">
+        <div className="mt-1 text-xs text-ovo-muted/90 whitespace-pre-wrap leading-relaxed">
           {content}
         </div>
       )}
@@ -196,8 +196,8 @@ function ChatMessageBubbleImpl({ message, streaming }: Props) {
   if (isSummary) {
     return (
       <div className="flex justify-center">
-        <div className="max-w-[88%] rounded-xl bg-[#FAF3E7] border border-dashed border-[#C78D73] text-[#5C3A2E] px-3.5 py-2 text-xs">
-          <div className="text-[10px] uppercase tracking-wider text-[#A3664F] mb-1">
+        <div className="max-w-[88%] rounded-xl bg-ovo-chip border border-dashed border-ovo-chip-border text-ovo-text px-3.5 py-2 text-xs">
+          <div className="text-[10px] uppercase tracking-wider text-ovo-muted mb-1">
             {t("chat.summary_badge")}
           </div>
           <div className="whitespace-pre-wrap">{message.content}</div>
@@ -222,7 +222,7 @@ function ChatMessageBubbleImpl({ message, streaming }: Props) {
           </div>
         )}
         {message.content.length > 0 && (
-          <div className="max-w-[78%] rounded-2xl rounded-br-sm bg-[#D97757] text-white px-3.5 py-2 text-sm whitespace-pre-wrap break-words">
+          <div className="max-w-[78%] rounded-2xl rounded-br-sm bg-ovo-user text-ovo-user-ink px-3.5 py-2 text-sm whitespace-pre-wrap break-words">
             {message.content}
           </div>
         )}
@@ -241,12 +241,12 @@ function ChatMessageBubbleImpl({ message, streaming }: Props) {
 
   return (
     <div className="flex justify-start">
-      <div className="max-w-[82%] rounded-2xl rounded-bl-sm bg-white/80 border border-[#E8CFBB] text-[#2C1810] px-3.5 py-2 text-sm whitespace-pre-wrap break-words">
+      <div className="max-w-[82%] rounded-2xl rounded-bl-sm bg-ovo-assistant border border-ovo-border text-ovo-text px-3.5 py-2 text-sm whitespace-pre-wrap break-words">
         {showInitialDots ? (
-          <span className="inline-flex gap-1 items-center text-[#8B4432]">
-            <span className="w-1.5 h-1.5 rounded-full bg-[#8B4432] animate-bounce [animation-delay:-0.3s]" />
-            <span className="w-1.5 h-1.5 rounded-full bg-[#8B4432] animate-bounce [animation-delay:-0.15s]" />
-            <span className="w-1.5 h-1.5 rounded-full bg-[#8B4432] animate-bounce" />
+          <span className="inline-flex gap-1 items-center text-ovo-muted">
+            <span className="w-1.5 h-1.5 rounded-full bg-ovo-muted animate-bounce [animation-delay:-0.3s]" />
+            <span className="w-1.5 h-1.5 rounded-full bg-ovo-muted animate-bounce [animation-delay:-0.15s]" />
+            <span className="w-1.5 h-1.5 rounded-full bg-ovo-muted animate-bounce" />
           </span>
         ) : (
           segments.map((seg, i) =>
@@ -259,7 +259,7 @@ function ChatMessageBubbleImpl({ message, streaming }: Props) {
         )}
         {showCaret && (
           <span
-            className="inline-block w-1.5 h-3.5 ml-0.5 align-[-2px] bg-[#8B4432] animate-pulse"
+            className="inline-block w-1.5 h-3.5 ml-0.5 align-[-2px] bg-ovo-muted animate-pulse"
             aria-hidden
           />
         )}

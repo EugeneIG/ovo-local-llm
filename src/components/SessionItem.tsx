@@ -142,13 +142,13 @@ export function SessionItem({ session, isActive, maxContext }: SessionItemProps)
         }}
         className={`group relative flex items-center gap-2 px-3 py-2 rounded-md cursor-pointer select-none text-sm transition-colors ${
           isActive
-            ? "bg-[#F4D4B8] text-[#2C1810]"
-            : "text-[#5C3828] hover:bg-[#F4D4B8]/60"
+            ? "bg-ovo-nav-active text-ovo-text"
+            : "text-ovo-muted hover:bg-ovo-nav-active-hover"
         }`}
       >
         {/* Pin indicator */}
         {session.pinned && (
-          <Pin className="w-3 h-3 text-[#D97757] shrink-0" aria-hidden />
+          <Pin className="w-3 h-3 text-ovo-accent shrink-0" aria-hidden />
         )}
 
         {/* Title or inline rename input */}
@@ -165,7 +165,7 @@ export function SessionItem({ session, isActive, maxContext }: SessionItemProps)
                 e.stopPropagation();
               }}
               onClick={(e) => e.stopPropagation()}
-              className="w-full bg-white/80 border border-[#D97757] rounded px-1 py-0.5 text-[#2C1810] text-sm outline-none"
+              className="w-full bg-ovo-assistant border border-ovo-accent rounded px-1 py-0.5 text-ovo-text text-sm outline-none"
             />
           ) : (
             <span className="block truncate">{session.title}</span>
@@ -182,7 +182,7 @@ export function SessionItem({ session, isActive, maxContext }: SessionItemProps)
             aria-hidden
           />
           {modelBadge && (
-            <span className="text-[10px] text-[#C78D73] truncate max-w-[60px]">
+            <span className="text-[10px] text-ovo-muted truncate max-w-[60px]">
               {modelBadge}
             </span>
           )}
@@ -195,33 +195,33 @@ export function SessionItem({ session, isActive, maxContext }: SessionItemProps)
         <div
           ref={menuRef}
           style={{ top: menu.y, left: menu.x }}
-          className="fixed z-50 min-w-[140px] bg-white border border-[#E8CFBB] rounded-lg shadow-lg py-1 text-sm text-[#2C1810]"
+          className="fixed z-50 min-w-[140px] bg-ovo-surface-solid border border-ovo-border rounded-lg shadow-lg py-1 text-sm text-ovo-text"
         >
           <button
             onClick={handleMenuRename}
-            className="flex items-center gap-2 w-full px-3 py-1.5 hover:bg-[#FAF3E7] transition-colors"
+            className="flex items-center gap-2 w-full px-3 py-1.5 hover:bg-ovo-bg transition-colors"
           >
-            <Pencil className="w-3.5 h-3.5 text-[#8B4432]" aria-hidden />
+            <Pencil className="w-3.5 h-3.5 text-ovo-muted" aria-hidden />
             {t("recents.rename")}
           </button>
           <button
             onClick={handleMenuPin}
-            className="flex items-center gap-2 w-full px-3 py-1.5 hover:bg-[#FAF3E7] transition-colors"
+            className="flex items-center gap-2 w-full px-3 py-1.5 hover:bg-ovo-bg transition-colors"
           >
             {session.pinned ? (
-              <PinOff className="w-3.5 h-3.5 text-[#8B4432]" aria-hidden />
+              <PinOff className="w-3.5 h-3.5 text-ovo-muted" aria-hidden />
             ) : (
-              <Pin className="w-3.5 h-3.5 text-[#8B4432]" aria-hidden />
+              <Pin className="w-3.5 h-3.5 text-ovo-muted" aria-hidden />
             )}
             {session.pinned ? t("recents.unpin") : t("recents.pin")}
           </button>
-          <div className="h-px bg-[#E8CFBB] my-1" />
+          <div className="h-px bg-ovo-border my-1" />
           <button
             onClick={handleMenuDelete}
             className={`flex items-center gap-2 w-full px-3 py-1.5 transition-colors ${
               confirmDelete
                 ? "bg-red-50 text-red-600 hover:bg-red-100"
-                : "hover:bg-[#FAF3E7] text-red-500"
+                : "hover:bg-ovo-bg text-red-500"
             }`}
           >
             <Trash2 className="w-3.5 h-3.5" aria-hidden />

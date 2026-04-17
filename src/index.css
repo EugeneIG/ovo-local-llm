@@ -199,13 +199,70 @@
 .ovo-owl-code-line-5 { animation-delay: 1.8s; }
 
 
+/* [START] theme — CSS custom property tokens, toggled via html.light / html.dark */
+:root,
+html.light {
+  color-scheme: light;
+  --bg: #FAF3E7;
+  --surface: rgba(255, 255, 255, 0.4);
+  --surface-solid: #ffffff;
+  --text: #2C1810;
+  --text-muted: #8B4432;
+  --border: #E8CFBB;
+  --accent: #D97757;
+  --accent-hover: #B85D3F;
+  --accent-ink: #ffffff;
+  --danger: #E11D48;
+  --warn: #F59E0B;
+  --success: #10B981;
+  --user-bubble: #D97757;
+  --user-bubble-ink: #ffffff;
+  --assistant-bubble: rgba(255, 255, 255, 0.8);
+  --chip: #FAF3E7;
+  --chip-border: #C78D73;
+  --nav-active: #F4D4B8;
+  --nav-active-hover: rgba(244, 212, 184, 0.5);
+}
+
+html.dark {
+  color-scheme: dark;
+  --bg: #1E1C1A;                /* warm dark — not pure black */
+  --surface: #232220;           /* +5 from bg — barely perceptible step */
+  --surface-solid: #2A2826;     /* +8 from bg — cards, hovers */
+  --text: #D8D4CD;              /* warm cream, not bright white — softens contrast */
+  --text-muted: #8C8882;        /* warm mid-grey — readable but blends */
+  --border: #1E1C1A;            /* matches bg exactly — dividers fade, rely on spacing */
+  --accent: #A8A39C;            /* neutral warm grey emphasis */
+  --accent-hover: #C4BFB8;
+  --accent-ink: #1E1C1A;
+  --danger: #E8A0A0;
+  --warn: #E5C078;
+  --success: #9EC4A5;
+  --user-bubble: #2A2826;       /* same step as surface-solid — soft bubble */
+  --user-bubble-ink: #D8D4CD;
+  --assistant-bubble: #232220;
+  --chip: #232220;
+  --chip-border: #2A2826;
+  --nav-active: #2A2826;
+  --nav-active-hover: #272523;
+}
+
+/* [START] Dark-mode form controls — force the native accent color so range /
+   checkbox / radio use the themed neutral grey instead of the browser's
+   default blue. Tailwind's `accent-*` utility may miss CSS-var backed colors
+   in some browsers; this rule guarantees coverage. */
+html.dark input[type="range"],
+html.dark input[type="checkbox"],
+html.dark input[type="radio"] {
+  accent-color: var(--accent);
+}
+/* [END] */
+/* [END] theme */
+
 :root {
   font-family: Inter, -apple-system, system-ui, sans-serif;
   line-height: 1.5;
   font-weight: 400;
-  /* [START] force light UA styling — app is light-only; prevents body going black on React unmount in macOS dark mode */
-  color-scheme: light;
-  /* [END] */
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
 }
@@ -214,10 +271,10 @@ html,
 body,
 #root {
   height: 100%;
-  background: #FAF3E7;
+  background: var(--bg);
 }
 
 body {
   margin: 0;
-  color: #2C1810;
+  color: var(--text);
 }

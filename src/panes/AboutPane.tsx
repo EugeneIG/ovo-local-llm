@@ -50,14 +50,14 @@ export function AboutPane() {
           <Owl state={effectiveState} size={size} />
         </button>
         <h1 className="text-4xl font-semibold tracking-tight mt-4">{t("app.name")}</h1>
-        <p className="mt-1 text-[#8B4432]">{t("app.tagline")}</p>
+        <p className="mt-1 text-ovo-muted">{t("app.tagline")}</p>
         {appInfo && (
-          <p className="mt-1 text-xs text-[#B85D3F] font-mono">v{appInfo.version}</p>
+          <p className="mt-1 text-xs text-ovo-accent font-mono">v{appInfo.version}</p>
         )}
       </div>
 
       <div className="flex flex-col items-center gap-2">
-        <div className="text-xs text-[#8B4432] uppercase tracking-wider">state</div>
+        <div className="text-xs text-ovo-muted uppercase tracking-wider">state</div>
         <div className="flex flex-wrap gap-2 justify-center max-w-2xl">
           {STATES.map((s) => (
             <button
@@ -65,8 +65,8 @@ export function AboutPane() {
               onClick={() => setState(s)}
               className={`px-4 py-2 rounded-full text-sm transition ${
                 state === s
-                  ? "bg-[#D97757] text-white shadow-md"
-                  : "bg-white text-[#8B4432] border border-[#E8CFBB] hover:bg-[#F4D4B8]"
+                  ? "bg-ovo-accent text-ovo-accent-ink shadow-md"
+                  : "bg-ovo-surface-solid text-ovo-muted border border-ovo-border hover:bg-ovo-nav-active"
               }`}
             >
               {s}
@@ -76,7 +76,7 @@ export function AboutPane() {
       </div>
 
       <div className="flex flex-col items-center gap-2">
-        <div className="text-xs text-[#8B4432] uppercase tracking-wider">size</div>
+        <div className="text-xs text-ovo-muted uppercase tracking-wider">size</div>
         <div className="flex gap-2 justify-center">
           {SIZES.map((s) => (
             <button
@@ -84,8 +84,8 @@ export function AboutPane() {
               onClick={() => setSize(s)}
               className={`px-4 py-2 rounded-full text-sm transition ${
                 size === s
-                  ? "bg-[#8B4432] text-white shadow-md"
-                  : "bg-white text-[#8B4432] border border-[#E8CFBB] hover:bg-[#F4D4B8]"
+                  ? "bg-ovo-muted text-ovo-surface-solid shadow-md"
+                  : "bg-ovo-surface-solid text-ovo-muted border border-ovo-border hover:bg-ovo-nav-active"
               }`}
             >
               {s} · {OWL_SIZES[s]}px

@@ -2,6 +2,7 @@ import { useTranslation } from "react-i18next";
 import { MessageSquare, Package, Settings, Info } from "lucide-react";
 import type { ComponentType, SVGProps } from "react";
 import { RecentsPanel } from "./RecentsPanel";
+import { useThemeStore } from "../store/theme";
 
 export type NavKey = "chat" | "models" | "settings" | "about";
 
@@ -24,13 +25,37 @@ interface SidebarProps {
 
 export function Sidebar({ active, onSelect }: SidebarProps) {
   const { t } = useTranslation();
+  const effectiveTheme = useThemeStore((s) => s.effective);
+  // [START] Two logo assets with identical 238×88 dimensions (dark variant
+  // generated from the black source so position stays pixel-perfect).
+  const logoSrc =
+    effectiveTheme === "dark" ? "/ovo-logo-dark.png?v=4" : "/ovo-logo.png?v=4";
+  // [END]
 
   return (
-    <nav className="w-56 bg-white/40 border-r border-[#E8CFBB] flex flex-col">
-      <div className="px-5 py-4 border-b border-[#E8CFBB]">
-        <div className="font-semibold text-[#2C1810] tracking-tight">{t("app.name")}</div>
-        <div className="text-[11px] text-[#8B4432] mt-0.5">{t("app.tagline")}</div>
+    <nav className="w-56 bg-ovo-surface border-r border-ovo-border flex flex-col">
+      {/* [START] Reserve space for macOS traffic-light buttons + expose the
+          header as a drag region so the user can move the window by grabbing
+          the OVO logo area (data-tauri-drag-region is honored by Tauri). */}
+      <div
+        data-tauri-drag-region
+        className="px-5 pt-16 pb-4 border-b border-ovo-border"
+      >
+        <img
+          src={logoSrc}
+          alt={t("app.name")}
+          data-tauri-drag-region
+          className="h-8 w-auto object-contain object-left select-none pointer-events-none"
+          draggable={false}
+        />
+        <div
+          data-tauri-drag-region
+          className="text-[11px] text-ovo-muted mt-0.5"
+        >
+          {t("app.tagline")}
+        </div>
       </div>
+      {/* [END] */}
       <ul className="py-2">
         {NAV_ITEMS.map(({ key, icon: Icon }) => {
           const isActive = key === active;
@@ -40,8 +65,8 @@ export function Sidebar({ active, onSelect }: SidebarProps) {
                 onClick={() => onSelect(key)}
                 className={`w-full flex items-center gap-3 px-5 py-2.5 text-sm transition ${
                   isActive
-                    ? "bg-[#F4D4B8] text-[#2C1810] font-medium border-l-2 border-[#D97757]"
-                    : "text-[#8B4432] hover:bg-[#F4D4B8]/50 border-l-2 border-transparent"
+                    ? "bg-ovo-nav-active text-ovo-text font-medium border-l-2 border-ovo-accent"
+                    : "text-ovo-muted hover:bg-ovo-nav-active-hover border-l-2 border-transparent"
                 }`}
               >
                 <Icon className="w-4 h-4" aria-hidden />
