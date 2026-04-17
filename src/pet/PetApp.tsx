@@ -164,17 +164,23 @@ export function PetApp() {
       void win.setPosition(new PhysicalPosition(saved.x, saved.y));
     }
 
-    // [START] Chat-driven state — auto-expire after 6s so the pet falls back
-    // to its ambient cycle when chat activity quiets down. "idle" events are
-    // treated as clears (chat returning to baseline).
+    // [START] Chat-driven state — "thinking" and "typing" are active
+    // streaming states and must persist until the main window explicitly
+    // flips to "idle" (otherwise long reasoning / long responses lose the
+    // animation mid-stream). Transient states (happy, error, surprised)
+    // still auto-clear after 6s so the pet doesn't stick on them.
+    const ACTIVE_STATES: ReadonlyArray<OwlState> = ["thinking", "typing"];
     let chatClearTimer: ReturnType<typeof setTimeout> | null = null;
     let unlisten: (() => void) | undefined;
     void listen<{ state: OwlState }>("owl:state", (e) => {
       if (chatClearTimer) clearTimeout(chatClearTimer);
-      if (e.payload.state === "idle") {
+      const state = e.payload.state;
+      if (state === "idle") {
         setChatState(null);
+      } else if (ACTIVE_STATES.includes(state)) {
+        setChatState(state);
       } else {
-        setChatState(e.payload.state);
+        setChatState(state);
         chatClearTimer = setTimeout(() => setChatState(null), 6000);
       }
     }).then((fn) => {

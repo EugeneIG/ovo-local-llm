@@ -164,6 +164,45 @@ function currentModelForSend(): string | null {
   return sess?.model_ref ?? null;
 }
 
+// [START] think-block detection — lets the owl animation switch between
+// "thinking" (inside <think>/<reasoning>/Harmony analysis) and "typing"
+// (visible response body) during streaming. Scans only the tail of the
+// accumulated buffer so cost stays O(1) per delta regardless of response
+// length; once `insideThink` flips, the caller keeps tracking it so long
+// reasoning blocks (>tail window) don't lose state.
+const THINK_OPEN_MARKERS: ReadonlyArray<string> = [
+  "<think>",
+  "<thinking>",
+  "<reasoning>",
+  "<|channel|>analysis",
+  "<|channel|>reasoning",
+];
+const THINK_CLOSE_MARKERS: ReadonlyArray<string> = [
+  "</think>",
+  "</thinking>",
+  "</reasoning>",
+  "<|end|>",
+];
+const THINK_SCAN_WINDOW = 500;
+
+function detectThinkTransition(accumulated: string): boolean | null {
+  const start = Math.max(0, accumulated.length - THINK_SCAN_WINDOW);
+  const tail = accumulated.substring(start);
+  let lastOpen = -1;
+  for (const tag of THINK_OPEN_MARKERS) {
+    const idx = tail.lastIndexOf(tag);
+    if (idx > lastOpen) lastOpen = idx;
+  }
+  let lastClose = -1;
+  for (const tag of THINK_CLOSE_MARKERS) {
+    const idx = tail.lastIndexOf(tag);
+    if (idx > lastClose) lastClose = idx;
+  }
+  if (lastOpen === -1 && lastClose === -1) return null;
+  return lastOpen > lastClose;
+}
+// [END]
+
 export const useChatStore = create<ChatStoreState>((set, get) => {
   // [START] Phase 6.2c — resolve server_id for a tool name
   function resolveServerId(toolName: string): string | null {
@@ -270,6 +309,11 @@ export const useChatStore = create<ChatStoreState>((set, get) => {
     let receivedAny = false;
     let accumulated = "";
     let flushScheduled = false;
+    // [START] owl: track whether the current stream is inside a reasoning
+    // block — starts true because the pre-loop owlState is "thinking" (gap
+    // before first token). First delta reclassifies based on markers.
+    let insideThink = true;
+    // [END]
 
     // [START] rAF-batched patch — store.patchMessage does the in-memory swap;
     // DB UPDATE happens once at the end to avoid per-token SQLite churn.
@@ -349,16 +393,34 @@ export const useChatStore = create<ChatStoreState>((set, get) => {
           continue;
         }
         if (!frame.delta) continue;
+        accumulated += frame.delta;
+        deltaCount += 1;
+        scheduleFlush();
+        // [START] owl state transition — scan accumulated tail for reasoning
+        // tags. First delta decides between "thinking" (explicit <think> in
+        // the first chunk) and "typing" (everything else); later deltas only
+        // flip when markers actually move. Keeps the owl animation in sync
+        // with whether the model is reasoning or writing visible output.
+        const trans = detectThinkTransition(accumulated);
+        let target: boolean;
         if (!receivedAny) {
           receivedAny = true;
           // [START] model_perf — capture first-token timestamp
           firstTokenAt = performance.now();
           // [END]
-          set({ owlState: "typing" });
+          // First-delta decision: non-reasoning models have no markers → typing
+          target = trans ?? false;
+        } else {
+          // Subsequent deltas: hold state when no markers appear in the tail
+          // window, so long reasoning blocks (>500 chars) keep "thinking"
+          // until </think> actually shows up.
+          target = trans ?? insideThink;
         }
-        accumulated += frame.delta;
-        deltaCount += 1;
-        scheduleFlush();
+        if (target !== insideThink) {
+          insideThink = target;
+          set({ owlState: insideThink ? "thinking" : "typing" });
+        }
+        // [END]
 
         // [START] Phase 6.2c — check for complete tool_use block after each delta
         const parsed = parseToolUseBlock(accumulated);
