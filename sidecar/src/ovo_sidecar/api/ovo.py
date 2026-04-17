@@ -8,6 +8,8 @@ from pydantic import BaseModel
 from ovo_sidecar import hf_scanner
 from ovo_sidecar.config import settings
 from ovo_sidecar.hf_downloader import DownloadTask, downloader
+from ovo_sidecar.mlx_runner import ChatMessage, runner
+from ovo_sidecar.mlx_vlm_runner import VlmChatMessage, vlm_runner
 from ovo_sidecar.registry import registry
 
 logger = logging.getLogger(__name__)
@@ -50,6 +52,10 @@ def _serialize_model(m: hf_scanner.ScannedModel) -> dict[str, Any]:
         # [END]
         # [START] capabilities gate client-side features (e.g. image attachments)
         "capabilities": list(m.capabilities),
+        # [END]
+        # [START] max_context — UI denominator for the ContextIndicator; may be
+        # overridden per-repo via model_context_overrides table on the frontend.
+        "max_context": m.max_context,
         # [END]
     }
 
@@ -180,3 +186,102 @@ async def add_alias(req: AliasRequest) -> dict[str, Any]:
 @router.get("/audit")
 async def audit() -> dict[str, Any]:
     return registry.snapshot()
+
+
+# [START] Context management endpoints — used by the frontend's session store
+# and auto-compact engine. Both accept the same OpenAI-ish message shape so
+# the UI can reuse the same serializer.
+class CountMessage(BaseModel):
+    role: str
+    content: str
+    images: list[str] | None = None
+
+
+class CountTokensRequest(BaseModel):
+    model: str
+    messages: list[CountMessage]
+
+
+def _resolve_ref_for_ovo(name: str):
+    repo_id = registry.resolve(name)
+    local = hf_scanner.resolve_path(repo_id)
+    return local if local is not None else repo_id
+
+
+@router.post("/count_tokens")
+async def count_tokens(req: CountTokensRequest) -> dict[str, Any]:
+    """Return the exact prompt token count for the given conversation.
+
+    Routes through the VLM runner when the model declares vision capability
+    so chat-template formatting (including image placeholders) matches what
+    the OpenAI endpoint would eventually send.
+    """
+    model_id = _resolve_ref_for_ovo(req.model)
+    repo_id = registry.resolve(req.model)
+    caps = hf_scanner.resolve_capabilities(repo_id)
+    is_vision = "vision" in caps
+
+    if is_vision:
+        vlm_messages = [
+            VlmChatMessage(role=m.role, content=m.content, images=m.images or [])
+            for m in req.messages
+        ]
+        count = await vlm_runner.count_tokens(model_id, vlm_messages)
+    else:
+        text_messages = [ChatMessage(role=m.role, content=m.content) for m in req.messages]
+        count = await runner.count_tokens(model_id, text_messages)
+
+    return {"model": req.model, "prompt_tokens": count}
+
+
+class SummarizeRequest(BaseModel):
+    model: str
+    messages: list[CountMessage]
+    max_tokens: int = 512
+    instruction: str | None = None
+
+
+_DEFAULT_SUMMARY_INSTRUCTION = (
+    "You are a summarization assistant. Produce a concise third-person summary "
+    "of the conversation turns above in under 200 words. Preserve: user goals, "
+    "key facts, decisions made, open questions, code references. Omit small talk. "
+    "Start immediately with the summary — no preamble."
+)
+
+
+@router.post("/summarize")
+async def summarize(req: SummarizeRequest) -> dict[str, Any]:
+    """Summarize a slice of messages using the SAME loaded model.
+
+    Non-streaming — auto-compact engine just needs the finished text. VLMs
+    summarize text-only (strip attached images; summaries don't need pixels).
+    """
+    model_id = _resolve_ref_for_ovo(req.model)
+
+    instruction = req.instruction or _DEFAULT_SUMMARY_INSTRUCTION
+    text_messages = [ChatMessage(role=m.role, content=m.content) for m in req.messages]
+    text_messages.append(ChatMessage(role="user", content=instruction))
+
+    summary = ""
+    prompt_tokens = 0
+    gen_tokens = 0
+    async for chunk in runner.stream_chat(
+        model_id,
+        text_messages,
+        max_tokens=req.max_tokens,
+    ):
+        summary += chunk.text
+        if chunk.done:
+            prompt_tokens = chunk.prompt_tokens or 0
+            gen_tokens = chunk.generation_tokens or 0
+
+    return {
+        "model": req.model,
+        "summary": summary.strip(),
+        "usage": {
+            "prompt_tokens": prompt_tokens,
+            "completion_tokens": gen_tokens,
+            "total_tokens": prompt_tokens + gen_tokens,
+        },
+    }
+# [END]

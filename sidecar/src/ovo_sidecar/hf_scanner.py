@@ -18,6 +18,43 @@ class ScannedModel:
     is_mlx: bool
     source: str = "hf"
     capabilities: tuple[str, ...] = ("text",)
+    # [START] max_context — inferred from config.json keys. UI uses this as the
+    # denominator for the ContextIndicator ring. Order of preference matches
+    # what Transformers/MLX actually honor at inference time.
+    max_context: int | None = None
+    # [END]
+
+
+# [START] max_context detection — HF configs use several keys (legacy +
+# model-specific). Return the first non-zero positive int found. Text_config
+# fallback covers VLMs where the LM sub-config carries the real window.
+_MAX_CONTEXT_KEYS: tuple[str, ...] = (
+    "max_position_embeddings",
+    "model_max_length",
+    "max_seq_length",
+    "n_positions",
+    "seq_length",
+)
+
+
+def detect_max_context(config: dict) -> int | None:
+    def _scan(d: dict) -> int | None:
+        for key in _MAX_CONTEXT_KEYS:
+            v = d.get(key)
+            if isinstance(v, int) and v > 0:
+                return v
+            if isinstance(v, float) and v > 0:
+                return int(v)
+        return None
+
+    found = _scan(config)
+    if found is not None:
+        return found
+    text_cfg = config.get("text_config")
+    if isinstance(text_cfg, dict):
+        return _scan(text_cfg)
+    return None
+# [END]
 
 
 # [START] Modality detection — HF config.json signals which non-text modalities
@@ -114,6 +151,7 @@ def _build_scanned(
         is_mlx=_detect_mlx(config, files, repo_id),
         source=source,
         capabilities=detect_capabilities(config),
+        max_context=detect_max_context(config),
     )
 
 
@@ -196,4 +234,12 @@ def resolve_capabilities(repo_id: str) -> tuple[str, ...]:
         if m.repo_id == repo_id:
             return m.capabilities
     return ("text",)
+
+
+def resolve_max_context(repo_id: str) -> int | None:
+    """Look up context window for a local model. None if unknown."""
+    for m in scan_all():
+        if m.repo_id == repo_id:
+            return m.max_context
+    return None
 # [END]

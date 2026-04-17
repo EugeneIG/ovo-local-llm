@@ -17,6 +17,8 @@ dependencies = [
     "tomli-w>=1.0.0",
     "rich>=13.9.0",
     "pillow>=10.0.0",
+    "torch>=2.5.0",
+    "torchvision>=0.20.0",
 ]
 
 [project.scripts]

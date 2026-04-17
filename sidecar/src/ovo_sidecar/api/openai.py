@@ -1,3 +1,4 @@
+import asyncio
 import json
 import logging
 import time
@@ -56,6 +57,10 @@ def _split_content(content: str | list[OpenAIContentPart]) -> tuple[str, list[st
 # [END]
 
 
+class OpenAIStreamOptions(BaseModel):
+    include_usage: bool = False
+
+
 class OpenAIChatRequest(BaseModel):
     model: str
     messages: list[OpenAIMessage]
@@ -63,6 +68,7 @@ class OpenAIChatRequest(BaseModel):
     temperature: float | None = None
     top_p: float | None = None
     max_tokens: int | None = None
+    stream_options: OpenAIStreamOptions | None = None
 
 
 class OpenAICompletionRequest(BaseModel):
@@ -161,10 +167,13 @@ async def chat_completions(req: OpenAIChatRequest):
         stream_iter = _text_stream
 
     if req.stream:
+        include_usage = bool(req.stream_options and req.stream_options.include_usage)
 
         async def event_stream():
             first = True
             final_reason = "stop"
+            prompt_tokens = 0
+            gen_tokens = 0
             # [START] Guarded streaming — once response headers are sent (200),
             # an exception from the generator silently aborts the connection and
             # surfaces in the webview as "TypeError: Load failed". Catch here and
@@ -185,20 +194,34 @@ async def chat_completions(req: OpenAIChatRequest):
                     yield f"data: {json.dumps(payload)}\n\n"
                     if chunk.done:
                         final_reason = chunk.finish_reason or "stop"
+                        prompt_tokens = chunk.prompt_tokens or 0
+                        gen_tokens = chunk.generation_tokens or 0
+            except asyncio.CancelledError:
+                # [START] Client disconnected mid-stream — swallow silently. No
+                # further yield (connection is gone); just re-raise so the
+                # generator exits and the underlying MLX worker sees the
+                # cancellation via the runner's finally hook.
+                logger.info("chat stream cancelled by client (disconnect)")
+                raise
+                # [END]
             except Exception as e:
                 logger.exception("chat stream failed")
-                err = {
-                    "id": completion_id,
-                    "object": "chat.completion.chunk",
-                    "created": created,
-                    "model": req.model,
-                    "choices": [
-                        {"index": 0, "delta": {}, "finish_reason": "error"}
-                    ],
-                    "error": {"type": e.__class__.__name__, "message": str(e) or "stream failed"},
-                }
-                yield f"data: {json.dumps(err)}\n\n"
-                yield "data: [DONE]\n\n"
+                try:
+                    err = {
+                        "id": completion_id,
+                        "object": "chat.completion.chunk",
+                        "created": created,
+                        "model": req.model,
+                        "choices": [
+                            {"index": 0, "delta": {}, "finish_reason": "error"}
+                        ],
+                        "error": {"type": e.__class__.__name__, "message": str(e) or "stream failed"},
+                    }
+                    yield f"data: {json.dumps(err)}\n\n"
+                    yield "data: [DONE]\n\n"
+                except Exception:
+                    # Client already disconnected; nothing to yield to.
+                    pass
                 return
             # [END]
             end = {
@@ -209,6 +232,24 @@ async def chat_completions(req: OpenAIChatRequest):
                 "choices": [{"index": 0, "delta": {}, "finish_reason": final_reason}],
             }
             yield f"data: {json.dumps(end)}\n\n"
+            # [START] Final usage chunk per OpenAI `stream_options.include_usage`
+            # spec. Emitted ONLY when client opts in, otherwise clients expecting
+            # chunk.choices to always exist may crash.
+            if include_usage:
+                usage_chunk = {
+                    "id": completion_id,
+                    "object": "chat.completion.chunk",
+                    "created": created,
+                    "model": req.model,
+                    "choices": [],
+                    "usage": {
+                        "prompt_tokens": prompt_tokens,
+                        "completion_tokens": gen_tokens,
+                        "total_tokens": prompt_tokens + gen_tokens,
+                    },
+                }
+                yield f"data: {json.dumps(usage_chunk)}\n\n"
+            # [END]
             yield "data: [DONE]\n\n"
 
         return StreamingResponse(event_stream(), media_type="text/event-stream")
