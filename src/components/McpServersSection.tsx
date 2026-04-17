@@ -5,6 +5,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ChevronDown } from "lucide-react";
+import { invoke } from "@tauri-apps/api/core";
 import { useMcpStore } from "../store/mcp";
 import { useToastsStore } from "../store/toasts";
 import { useProjectContextStore } from "../store/project_context";
@@ -265,10 +266,17 @@ function McpSearchPanel({ installedNames, onInstall }: McpSearchPanelProps) {
     setError(null);
 
     debounceRef.current = setTimeout(() => {
-      const url = `https://registry.npmjs.org/-/v1/search?text=${encodeURIComponent(trimmed)}&size=20`;
-      fetch(url)
-        .then((res) => res.json())
-        .then((data: unknown) => {
+      // Proxy through Rust to bypass Tauri webview CORS — registry.npmjs.org
+      // rejects the `tauri://` origin so a direct fetch returns empty.
+      invoke<string>("npm_search", { query: trimmed, size: 20 })
+        .then((raw) => {
+          let data: unknown;
+          try {
+            data = JSON.parse(raw);
+          } catch {
+            setResults([]);
+            return;
+          }
           if (!isNpmSearchResponse(data)) {
             setResults([]);
             return;

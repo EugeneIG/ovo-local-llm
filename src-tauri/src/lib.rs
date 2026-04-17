@@ -93,6 +93,34 @@ fn read_md_file(path: String) -> Result<MdFileResult, String> {
 }
 // [END]
 
+// [START] Phase 6.2c — npm_search: proxy fetch to registry.npmjs.org through
+// Rust so webview CORS doesn't block the MCP package search. Returns the raw
+// JSON body as a string; the caller parses.
+#[tauri::command]
+async fn npm_search(query: String, size: Option<u32>) -> Result<String, String> {
+    let trimmed = query.trim();
+    if trimmed.is_empty() {
+        return Err("empty query".into());
+    }
+    let n = size.unwrap_or(20).min(100);
+    let mut url = reqwest::Url::parse("https://registry.npmjs.org/-/v1/search")
+        .map_err(|e| format!("bad npm url: {e}"))?;
+    url.query_pairs_mut()
+        .append_pair("text", trimmed)
+        .append_pair("size", &n.to_string());
+    let resp = reqwest::Client::new()
+        .get(url)
+        .header("User-Agent", "OVO/0.0.1 (mcp search)")
+        .send()
+        .await
+        .map_err(|e| format!("npm fetch failed: {e}"))?;
+    if !resp.status().is_success() {
+        return Err(format!("npm returned status {}", resp.status()));
+    }
+    resp.text().await.map_err(|e| format!("npm body read failed: {e}"))
+}
+// [END]
+
 // [START] Phase 6.1b — read_md_dir: list all *.md / *.markdown files in a
 // folder (non-recursive) and return their contents. Lets users add a whole
 // folder of notes as project context in one click.
@@ -281,6 +309,7 @@ pub fn run() {
             default_project_path,
             read_md_file,
             read_md_dir,
+            npm_search,
             // [START] Phase 6.2a — MCP commands
             mcp::mcp_start,
             mcp::mcp_call,
