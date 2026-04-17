@@ -1,0 +1,582 @@
+# OVOMLX 다음 세션 핸드오버
+
+작성: 2026-04-17 KST
+대상: 다음 세션 Claude
+사용자: ovo@ovoment.com (오빠)
+
+---
+
+## 🔥 즉시 해결할 이슈 (최우선)
+
+### 🚨 사이드카 크래시 격리 (아키텍처 이슈, 매우 심각)
+
+**증상**: 사용자가 특정 모델을 선택하면 FE에 "Load failed"가 뜸. 이후 **다른 모델도 전부** "Load failed".
+
+**원인 (2026-04-17 크래시 리포트로 확정)**:
+
+macOS DiagnosticReport (`~/Library/Logs/DiagnosticReports/Python-2026-04-17-230234.ips`) 분석 결과:
+
+```
+Termination: SIGABRT (Abort trap: 6)
+Faulting thread 31 (Metal completion thread, NOT Python main)
+Stack:
+  libmlx::gpu::check_error(MTL::CommandBuffer*)   ← 여기서 C++ throw
+  → std::__terminate → abort
+```
+
+즉 단순 `mlx_lm.load()` 예외가 아니라 **GPU (Metal) 레벨 크래시**:
+1. MLX가 Metal GPU에 compute 명령 디스패치
+2. GPU가 error 반환 (커널 실행 실패 — 미지원 양자화/아키텍처/OOM 추정)
+3. MLX가 Metal completion handler에서 C++ 예외 throw
+4. Metal 콜백 스레드에서 Python까지 예외 unwind 불가 → `std::terminate` → **SIGABRT**
+
+**⚠️ 치명적 함의**:
+- **Python try/except로 못 잡음** — 크래시가 Python main thread가 아니라 Metal completion thread에서 발생
+- `mlx_runner._load`에 단순히 `try/except BaseException` 씌우는 수정은 **의미 없음** (std::terminate는 Python 예외 시스템을 우회)
+- **유일한 해결**: 모델 로드+추론을 **별도 자식 프로세스에 완전 격리**
+
+**유력한 GPU 크래시 원인**:
+1. **미지원 양자화 Metal 커널**: MXFP4-Q8, nvfp4, mxfp8, 9bit 등 희귀 포맷은 mlx-lm의 Metal 커널 구현이 없을 수 있음
+2. **GPU unified memory 부족**: 로드는 성공해도 첫 forward pass의 워크스페이스 할당 실패 (31B/40B/120B 대형 + 비최적 양자화 조합)
+3. **가짜 버전 이름 아키텍처**: gemma-4, Qwen3.5/3.6 — 실제 존재하지 않는 모델 버전으로, config에 참조된 모듈들이 mlx-lm에 없음 → 커널 호출 미스매치
+
+---
+
+### 📋 현재 로컬 모델 전수 분류 (2026-04-17 스캔 기준, 총 16개)
+
+**OVO 우선순위 (Apple Silicon 네이티브이므로 MLX 최우선)**:
+> **MLX** > **LLM** > **실행불가**
+
+사용자 지시: **블랙리스트 금지, 전부 되게 만들 것**. 분류는 UI 뱃지 + 적절한 런타임 라우팅용.
+
+#### 🥇 MLX (1순위 — Apple Silicon 네이티브)
+
+| repo_id | arch | 양자화 | 크기 |
+|---------|------|--------|------|
+| mlx-community/gpt-oss-20b-MXFP4-Q8 | gpt_oss | 4bit/mxfp4 | 12.1GB |
+| cloudyu/GPT-OSS-120B-2experts-MLX-q4-... | gpt_oss | 4bit/mxfp4 | 63.4GB |
+| JANGQ-AI/MiniMax-M2.7-JANG_2L | minimax_m2 | 2bit | 67.2GB |
+| JANGQ-AI/MiniMax-M2.7-JANG_3L | minimax_m2 | 3bit | 95.2GB |
+| mlx-community/gemma-4-31b-it-8bit | gemma4 | 8bit/affine | 33.8GB |
+| mlx-community/gemma-4-31b-it-bf16 | gemma4 | bf16 | 62.6GB |
+| inferencerlabs/gemma-4-31B-MLX-9bit | gemma4 | 9bit | 35.7GB |
+| Jiunsong/supergemma4-26b-abliterated-multimodal-mlx-8bit | gemma4 | 8bit/affine | 28.0GB |
+| m-i/Qwen3.5-40B-...-Deckard-Heretic-...-mxfp8 | qwen3_5 | 8bit/mxfp8 | 41.2GB |
+| mlx-community/Qwen3.6-35B-A3B-nvfp4 | qwen3_5_moe | 4bit/nvfp4 | 20.4GB |
+| mlx-community/Qwen3-TTS-12Hz-1.7B-Base-bf16 | qwen3_tts | bf16 | 4.5GB (TTS전용) |
+
+#### 🥈 LLM (2순위 — 비-MLX, HF transformers fallback 필요)
+
+| repo_id | arch | 크기 |
+|---------|------|------|
+| HumeAI/tada-1b | TadaForCausalLM | 3.9GB |
+| Jiunsong/supergemma4-26b-abliterated-multimodal | Gemma4ForConditionalGeneration | 51.6GB |
+
+#### 🥉 실행불가 (현재 전용 엔드포인트 없음 — 별도 런타임)
+
+TTS/STT 전용 모델 (채팅 엔드포인트에 꽂히면 안 됨):
+- mlx-community/Qwen3-TTS-12Hz-1.7B-Base-bf16 (MLX TTS)
+- openai/whisper-base (STT)
+- hexgrad/Kokoro-82M (TTS)
+- YatharthS/LuxTTS (TTS)
+
+---
+
+### 🎯 "모든 모델이 다 되게" — 카테고리별 필요 작업
+
+#### A. MLX 전부 되게 (최우선 순위)
+
+1. **프로세스 격리 (필수 전제)** — 위 "사이드카 크래시 격리" 섹션 참고. `mlx_lm.load` 및 추론을 `multiprocessing` 자식 프로세스로 분리해서 Metal GPU 크래시 시에도 사이드카 본체 생존.
+2. **mlx-lm 최신 버전 추적** — 현재 `mlx-lm 0.31.2`. gemma4/qwen3_5/qwen3_5_moe/minimax_m2 같은 신규 아키텍처는 mlx-lm 본가에 머지되는 대로 자동 반영되도록 `pyproject.toml`에서 느슨한 upper bound 유지 (또는 주기적 `uv lock --upgrade`).
+3. **미지원 아키텍처용 커스텀 어댑터** — upstream이 아직 없을 때 자체 구현:
+   - `sidecar/src/ovo_sidecar/mlx_adapters/` 폴더 신설
+   - `gemma4.py`, `qwen3_5.py`, `qwen3_5_moe.py`, `minimax_m2.py` — 각 아키텍처의 transformer layer를 MLX로 포팅
+   - `mlx_runner._load`에서 arch 이름으로 custom adapter 먼저 조회, 없으면 mlx-lm 기본 경로
+   - 레퍼런스: HF transformers의 동일 모델 구현 + mlx-lm 기존 모델 (예: gemma3) 템플릿
+4. **희귀 양자화 Metal 커널 검증** — MXFP4-Q8, nvfp4, mxfp8, affine-9bit 등에 대해 mlx 본가 지원 여부 확인. 없으면 디코드 전처리로 표준 양자화 변환(on-the-fly dequant → 4bit affine) 구현.
+5. **GPU OOM 사전 검사** — 사이드카 로드 전에 모델 크기 vs 시스템 RAM(통합메모리) 체크. 95GB 모델을 64GB 머신에 올리려 하면 미리 400 + "메모리 부족 — 모델 크기 $X GB, 사용 가능 $Y GB" 에러. 사이드카 터트리기 전에 차단.
+
+#### B. LLM (HF transformers fallback) 되게 하기
+
+1. **신규 `hf_runner.py`** — `mlx_runner.py`와 동일 인터페이스로 PyTorch MPS 백엔드 사용.
+   - `from transformers import AutoModelForCausalLM, AutoTokenizer`
+   - `model = AutoModelForCausalLM.from_pretrained(path, torch_dtype=torch.float16, device_map="mps")`
+   - `TextIteratorStreamer` + `model.generate(streamer=...)` 으로 스트리밍
+2. **의존성 추가**: `torch>=2.5.0` (MPS 지원), `accelerate`, `bitsandbytes-macos` (가능 시)
+3. **사이드카 라우팅** — `api/openai.py`에서 `is_mlx` flag로 분기:
+   - MLX 포맷이면 `mlx_runner` / `mlx_vlm_runner`
+   - 비-MLX면 `hf_runner`
+4. **커스텀 아키텍처 (Tada 등)** — `trust_remote_code=True` 필요할 수 있음. 사용자 보안 경고 띄우고 opt-in.
+5. **느린 속도 안내** — MPS는 MLX보다 훨씬 느리니 FE에서 "⚠️ HF 런타임 (느림, ~5-10 tok/s)" 배지 표시.
+
+#### C. TTS/STT 전용 엔드포인트 추가
+
+1. **`/v1/audio/speech`** (OpenAI 호환 TTS) — Kokoro / Qwen3-TTS / LuxTTS 라우팅
+   - 입력: `{model, input, voice, response_format}`, 출력: audio bytes
+   - `tts_runner.py` 신설, kokoro/qwen3_tts별 어댑터 함수
+2. **`/v1/audio/transcriptions`** (OpenAI 호환 STT) — Whisper 라우팅
+   - 입력: multipart file, 출력: `{text}`
+   - `stt_runner.py` — mlx-whisper 또는 openai-whisper 사용
+3. **FE UI** — SettingsPane 또는 새 pane에서 TTS voice 선택, STT upload UI. 채팅 pane의 음성 입력 버튼 연동(Phase B).
+4. **라우팅 판정** — `hf_scanner.detect_capabilities`에 `tts`, `stt` flag 추가. `model_type == "whisper"` → stt. `"qwen3_tts"`, repo에 "TTS"/"kokoro" 포함 → tts. UI에서 해당 모델은 채팅 리스트가 아니라 오디오 리스트에 표시.
+
+#### D. 공통 — 분류/뱃지 UI
+
+1. **`hf_scanner.py` 확장** — `ScannedModel`에 `runtime: "mlx" | "hf" | "tts" | "stt" | "unknown"` 필드 추가. 판정 규칙:
+   - TTS arch (`qwen3_tts`, `kokoro`, `lux_tts`, 레포명 키워드) → `tts`
+   - STT arch (`whisper`) → `stt`
+   - `is_mlx: true` + CausalLM/ConditionalGeneration 계열 → `mlx`
+   - 나머지 CausalLM → `hf`
+   - 판정 실패 → `unknown` (UI에서 "실행 불가" 표시)
+2. **OVO API 직렬화** — `/ovo/models` 응답에 `runtime` 필드 노출
+3. **ModelsPane UI** — 각 모델 카드에 배지:
+   - 🥇 MLX (초록)
+   - 🥈 LLM (노랑, "느림" 경고)
+   - 🎵 TTS (별도 섹션)
+   - 🎙 STT (별도 섹션)
+   - 🔴 실행불가 (회색, 비활성)
+4. **ChatPane 모델 선택 필터** — 채팅에선 MLX + LLM만 표시. TTS/STT는 별도 pane.
+5. **i18n** — `chat.runtime.{mlx,hf,tts,stt,unknown}` 메시지 키 추가 (ko, en).
+
+**재현된 크래시 유발 모델** (curl 직접 테스트):
+- ✅ **확정**: `mlx-community/gpt-oss-20b-MXFP4-Q8` — 로드 중 Connection reset by peer → 프로세스 사망
+- ⏱ **의심 (확인 전 사이드카 이미 죽음)**: `mlx-community/gemma-4-31b-it-bf16`, `mlx-community/Qwen3-TTS-12Hz-1.7B-Base-bf16`
+- 오빠 환경의 모델 목록 중 **존재하지 않는 아키텍처** (gemma-4, Qwen3.5/3.6), **희귀 양자화** (nvfp4, mxfp8, MXFP4-Q8, 9bit), **비-LLM** (Qwen3-TTS), **커스텀 머지** (Deckard-Heretic, JANG) 등은 전부 잠재 크래시 후보
+
+**해결 방향 (권장 조합)**:
+1. **로드 격리** (가장 우선): `mlx_lm.load()`를 `multiprocessing.Process`나 `subprocess`로 자식 프로세스에서 수행 → 크래시해도 사이드카 본체 생존. 성공한 경우만 메인으로 shared memory/IPC로 넘기거나, 아예 **모델 실행도 자식 프로세스에서** 수행하고 IPC로 토큰 스트리밍.
+   - 파이썬에서 mlx 모델은 pickling 어려움 → 로드+실행을 **둘 다** 자식에서. 메인은 queue로 요청 라우팅만.
+2. **Watchdog 재시작**: Tauri main/rust 쪽에서 사이드카 프로세스 종료 감지 시 자동 재시작. `tauri-plugin-shell` + exit callback.
+3. **로드 실패 사용자 피드백**: FE에서 "Load failed"를 그대로 보여주지 말고 ~~"모델 로딩 실패 — 사이드카 재시작 중입니다"~~ 같은 메시지로 변환. `api.ts`의 에러 핸들러에 패턴 매칭.
+4. **블랙리스트**: `hf_scanner.py`에서 config.json 검사 시 알려진 미지원 패턴 (ex: `quantization.bits: 4` + `method: "mxfp4"` 같이 mlx-lm 현재 버전이 모르는 조합) 감지하면 `unsupported: true` 플래그 달아서 UI에서 아예 선택 못 하게.
+
+**최소 수정 (빠른 완화, 격리 전)**:
+- `mlx_runner.py::_load`를 `try/except BaseException`으로 감싸서 Exception은 500으로 바꿔 반환 (네이티브 SIGSEGV는 못 막음)
+- FE `lib/api.ts::streamChat`에서 `fetch` reject 시 에러 메시지 한국어로 보기 쉽게 변환
+- ModelsPane에 "이 모델은 테스트되지 않음" 경고 (양자화 방식이나 repo 이름으로 필터)
+
+**읽어야 할 파일**:
+- `/Volumes/docker/project/ovomlx/sidecar/src/ovo_sidecar/mlx_runner.py` — `_load` 격리 대상
+- `/Volumes/docker/project/ovomlx/sidecar/src/ovo_sidecar/mlx_vlm_runner.py` — 동일 패턴
+- `/Volumes/docker/project/ovomlx/src-tauri/` — watchdog/자동 재시작 지점
+- `/Volumes/docker/project/ovomlx/src/lib/api.ts` — 에러 메시지 변환
+
+**긴급 회피 (오빠가 지금 당장)**:
+- Tauri 앱 재시작 필요 (현재 사이드카 PID 54195 이미 사망)
+- gpt-oss / gemma-4 / Qwen3-TTS / Qwen3.5+ / 커스텀 머지 계열 선택 자제
+
+---
+
+### Harmony 채널 포맷 leak
+**증상**: 사용자가 "너 뭐해" 물어보니 모델이 아래와 같이 응답함 (raw 출력):
+```
+<|channel>thought
+*   User: "너뭐해" (What are you doing? / What's up?)
+    *   Language: Korean.
+    ...[전체 reasoning chain이 그대로 노출]...
+<channel|>저는 당신과 대화하기 위해 여기서 기다리고 있었어요! 😊
+...
+```
+
+**원인 (확인 완료)**:
+- `ChatMessageBubble.tsx`에 이미 `<think>...</think>` 파서 + `ThinkBlock` 접힘 UI가 **존재함** (12-110번째 줄)
+- 하지만 파서가 **하드코딩된 `<think>` / `</think>` 리터럴만** 인식 (18-19번째 줄):
+  ```ts
+  const OPEN_TAG = "<think>";
+  const CLOSE_TAG = "</think>";
+  ```
+- 사용자 모델은 **Harmony 포맷** 사용 중 — `<|channel>thought` ... `<channel|>` 토큰
+- 파서가 이 태그를 모르니까 전체 raw 출력이 text segment로 들어가서 그대로 렌더됨
+- 사이드카는 text를 가감 없이 전달 중 (mlx_runner.py) — 이건 정상. 파싱 책임은 FE에 있음.
+
+**해결 방향**: `ChatMessageBubble.tsx::parseSegments`를 모든 공개된 reasoning 포맷 지원하도록 일반화.
+
+### 모든 LLM reasoning 포맷 조사 결과 (2026-04 기준)
+
+| # | 포맷 | 사용 모델 | 열기 | 닫기 | 비고 |
+|---|------|-----------|------|------|------|
+| 1 | `<think>` | Qwen3, DeepSeek-R1, QwQ, R1 계열, Phi-reasoning | `<think>` | `</think>` | 가장 흔함. Qwen3/R1 chat template이 prompt에 `<think>`를 미리 주입 → 모델은 `</think>`만 출력 (현재 파서의 implicit-open 로직 이미 처리 중) |
+| 2 | Harmony (OpenAI) | **gpt-oss**, gpt-oss-20b/120b | `<\|channel\|>analysis<\|message\|>` | `<\|end\|>` / `<\|return\|>` / 다음 `<\|channel\|>final` | 정식 채널: analysis, commentary, final. OpenAI는 analysis를 사용자에 보이지 말라 권고하지만, 로컬 LLM 투명성 원칙상 접어서 노출 |
+| 2a | Harmony 변형 | gpt-oss 파생 | `<\|channel\|>thought` | 동일 | thought 라벨 (비표준) |
+| 2b | Harmony 망가진 | 토크나이저 렌더링 이슈 | `<\|channel>thought` / `<\|channel>analysis` | `<channel\|>` / `<\|end>` | 파이프 한쪽 소실 — 오빠가 이번에 본 케이스! |
+| 3 | `<thinking>` | Claude 스타일 모방 모델 | `<thinking>` | `</thinking>` | Anthropic 공식은 API 블록이지만 일부 오픈소스가 텍스트로 출력 |
+| 4 | `<reasoning>` | 일부 reasoning 파인튜닝 | `<reasoning>` | `</reasoning>` | |
+| 5 | `<reflection>` | Reflection-70B 등 | `<reflection>` | `</reflection>` | output/reflection/answer 3단 구조 |
+| 6 | `<scratchpad>` | 초기 CoT 모델 | `<scratchpad>` | `</scratchpad>` | 오래된 포맷이지만 여전히 등장 |
+| 7 | `<analysis>` | 일부 커스텀 모델 | `<analysis>` | `</analysis>` | |
+| 8 | 대괄호 변형 | 일부 지시 튜닝 모델 | `[THOUGHT]` / `[THINK]` / `[REASONING]` | 대응 닫기 | 희귀하지만 존재 |
+| 9 | ChatML think role | QwQ 초기 등 | `<\|im_start\|>think` | `<\|im_end\|>` | 특수토큰 렌더링 이슈 시 노출 |
+
+### 구현 스케치 (ChatMessageBubble.tsx 상단)
+
+```ts
+// [START] 멀티포맷 reasoning 파서 — 모든 공개된 CoT 구분자 커버
+type Segment =
+  | { type: "text"; content: string }
+  | { type: "think"; content: string; open: boolean };
+
+interface FormatPair {
+  openRe: RegExp;
+  closeRe: RegExp;
+}
+
+// 주의: 모든 정규식에 /g 금지 (stateful lastIndex 피하기). 매번 새 match 호출.
+const FORMATS: FormatPair[] = [
+  // 1. Classic <think>
+  { openRe: /<think\b[^>]*>/i, closeRe: /<\/think>/i },
+  // 3~7. Alternate XML-like tags
+  { openRe: /<thinking\b[^>]*>/i, closeRe: /<\/thinking>/i },
+  { openRe: /<reasoning\b[^>]*>/i, closeRe: /<\/reasoning>/i },
+  { openRe: /<reflection\b[^>]*>/i, closeRe: /<\/reflection>/i },
+  { openRe: /<scratchpad\b[^>]*>/i, closeRe: /<\/scratchpad>/i },
+  { openRe: /<analysis\b[^>]*>/i, closeRe: /<\/analysis>/i },
+  // 8. Bracket variants
+  { openRe: /\[(?:THOUGHT|THINK|REASONING)\]/i,
+    closeRe: /\[\/(?:THOUGHT|THINK|REASONING)\]/i },
+  // 2 & 2a & 2b. Harmony (정식 + 파이프 파손 + thought 라벨) — 관대한 매칭
+  // 열기: <|channel|>(analysis|thought|commentary) + 선택적 <|message|>
+  // 닫기: <|end|> / <|return|> / 다음 <|channel|>final 전환
+  { openRe: /<\|?channel\|?>\s*(?:analysis|thought|commentary)\b\s*(?:<\|?message\|?>)?/i,
+    closeRe: /<\|?(?:end|return)\|?>|<\|?channel\|?>\s*final\b\s*(?:<\|?message\|?>)?/i },
+  // 9. ChatML 'think' role
+  { openRe: /<\|?im_start\|?>\s*think\b/i, closeRe: /<\|?im_end\|?>/i },
+];
+
+// Qwen3 등의 implicit-open (prompt에 <think> 주입 → 본문이 </think>로 끝나는 케이스)
+const IMPLICIT_CLOSE_RE = /<\/think>|<\/thinking>|<\/reasoning>|<\/reflection>|<\|?(?:end|return)\|?>/i;
+
+function matchFirst(content: string, startIdx: number): { fmt: FormatPair; idx: number; len: number } | null {
+  const slice = content.slice(startIdx);
+  let best: { fmt: FormatPair; idx: number; len: number } | null = null;
+  for (const fmt of FORMATS) {
+    const m = slice.match(fmt.openRe);
+    if (!m || m.index === undefined) continue;
+    const idx = startIdx + m.index;
+    if (!best || idx < best.idx) best = { fmt, idx, len: m[0].length };
+  }
+  return best;
+}
+
+function parseSegments(content: string): Segment[] {
+  const out: Segment[] = [];
+  let i = 0;
+
+  const implicit = content.match(IMPLICIT_CLOSE_RE);
+  const firstOpen = matchFirst(content, 0);
+  if (implicit && implicit.index !== undefined &&
+      (!firstOpen || implicit.index < firstOpen.idx)) {
+    const prefix = content.slice(0, implicit.index).trim();
+    if (prefix) out.push({ type: "think", content: prefix, open: false });
+    i = implicit.index + implicit[0].length;
+  }
+
+  while (i < content.length) {
+    const hit = matchFirst(content, i);
+    if (!hit) {
+      out.push({ type: "text", content: content.slice(i) });
+      break;
+    }
+    if (hit.idx > i) out.push({ type: "text", content: content.slice(i, hit.idx) });
+    const contentStart = hit.idx + hit.len;
+    const closeMatch = content.slice(contentStart).match(hit.fmt.closeRe);
+    if (!closeMatch || closeMatch.index === undefined) {
+      // 스트리밍 중 미완성 — 남은 전체를 open think로
+      out.push({ type: "think", content: content.slice(contentStart), open: true });
+      break;
+    }
+    const thinkEnd = contentStart + closeMatch.index;
+    out.push({ type: "think", content: content.slice(contentStart, thinkEnd), open: false });
+    i = thinkEnd + closeMatch[0].length;
+  }
+
+  return out.filter(s => !(s.type === "text" && s.content.length === 0));
+}
+// [END]
+```
+
+### 추가 안전장치 (파싱 후 청소)
+
+남은 Harmony 토큰들이 text segment에 노출될 수 있으니 렌더 직전에 정리:
+
+```ts
+function stripLooseTokens(s: string): string {
+  return s
+    // Harmony 남은 토큰
+    .replace(/<\|?(?:start|end|message|return|call|channel|constrain)\|?>/gi, "")
+    // Harmony assistant 헤더
+    .replace(/^\s*assistant\s*/i, "")
+    // ChatML 남은 토큰
+    .replace(/<\|?im_(?:start|end|sep)\|?>/gi, "")
+    .trim();
+}
+```
+text segment 렌더 시 이 함수로 감싸기.
+
+### 절대 하지 말 것
+
+- **사이드카에서 필터링 금지**: thinking은 숨기는 게 아니라 접어서 보여주는 게 우리 디자인 원칙. 파싱/렌더 책임은 FE.
+- **모델 이름으로 파서 분기 금지**: 출력된 토큰 자체로 판단 (관대한 multi-format 매칭). repo_id 기반 분기는 커스텀 모델에서 깨짐.
+- **analysis 채널 완전 숨김 금지**: OpenAI는 사용자에게 보이지 말라 권고하지만, 로컬 LLM 투명성 > 안전. 접힌 상태로 노출 (사용자가 펼쳐서 확인 가능).
+
+### 검증 계획
+
+1. **Harmony 모델** (gpt-oss-20b 등) → "너 뭐해" 재현 → analysis 구간이 ThinkBlock으로 접힘, final만 본문에 표시
+2. **Qwen3 thinking mode** → `<think>...</think>` 여전히 잘 접힘 (회귀)
+3. **DeepSeek-R1** → implicit-open: `</think>` 전까지 think 처리 (회귀)
+4. **텍스트 전용 모델** (Llama 3.1 instruct 등) → 전체 text segment, ThinkBlock 없음
+5. **잘린 스트리밍** → 닫기 도달 전엔 `open: true`로 "생각 중..." 점멸
+
+### 읽어야 할 파일
+
+- `/Volumes/docker/project/ovomlx/src/components/ChatMessageBubble.tsx` — 파서 전면 교체
+- `/Volumes/docker/project/ovomlx/src/locales/{ko,en}.json` — `chat.thinking`, `chat.thought` 키 이미 존재
+- 사이드카 쪽은 수정 불필요
+
+### 참고 URL (다음 세션에서 바로 열어보기)
+
+- [OpenAI Harmony Response Format — 공식](https://cookbook.openai.com/articles/openai-harmony) — 특수 토큰 전체 목록
+- [gpt-oss raw CoT 처리 가이드](https://cookbook.openai.com/articles/gpt-oss/handle-raw-cot) — OpenAI 공식 권고
+- [ChatML vs Harmony 비교](https://huggingface.co/blog/kuotient/chatml-vs-harmony) — 포맷 차이 이해
+- [Qwen3-8B HuggingFace](https://huggingface.co/Qwen/Qwen3-8B) — thinking mode 설명
+- [Qwen3 chat template deep dive](https://huggingface.co/blog/qwen-3-chat-template-deep-dive) — implicit-open 이해
+- [vLLM Reasoning Outputs](https://docs.vllm.ai/en/latest/features/reasoning_outputs/) — 다른 구현체의 파서 분기 참고
+- [openai/harmony GitHub](https://github.com/openai/harmony) — 렌더러 레퍼런스 구현
+
+---
+
+## 📋 진행 중이던 스코프 (Phase A-E)
+
+사용자 최종 지시:
+> "그냥 모든 기능이 다 되면 좋겠어 어차피 로컬 LLM 이잖아.. 컨텍스트 범위는 설정에서 직접 조절 가능토록하고"
+
+### ✅ 완료
+- **Capability 감지** (vision + audio 독립 플래그)
+  - `hf_scanner.py` — `_VISION_MODEL_TYPES`, `_AUDIO_MODEL_TYPES`, `detect_capabilities()`, `resolve_capabilities()`
+  - Phi-4-multimodal 같은 멀티모달 모델 동시 지원
+- **mlx-vlm 런타임** — `mlx_vlm_runner.py` 신규
+  - PIL로 data URL 디코딩, `apply_chat_template(num_images=N)`, `stream_generate(images=...)`
+  - ⚠️ **아직 audio 미지원** (VlmChatMessage에 `audios` 필드 없음)
+- **OpenAI 엔드포인트 라우팅** — `api/openai.py`
+  - `content: str | list[ContentPart]` 파싱
+  - capability 기반 분기 (vision이면 vlm_runner, 아니면 runner)
+  - text-only 모델에 image 오면 400 에러
+- **FE 멀티모달 전송** — `store/chat.ts`, `lib/api.ts`
+  - `toWireMessage()` — File → data URL, URL attachment → image_url
+  - `ChatContentPart`, `ChatWireMessage` 타입
+- **FE capability 게이트** — `ChatPane.tsx`, `ChatInput.tsx`
+  - `selectedModel.capabilities.includes("vision")`로 `+` 버튼 제어
+  - capability 잃으면 attachments 자동 클리어
+- **i18n** — `ko.json`, `en.json`에 `chat.attach_unsupported` 추가
+- **uv sync** — `mlx-vlm>=0.4.0`, `pillow>=10.0.0` 추가 후 sync 완료 (exit 0)
+  - SMB 볼륨 이슈는 `UV_LINK_MODE=copy`로 우회
+- **사이드카 smoke test** — 임포트 + capability 감지 통과 (exit 0)
+
+### ⏳ 남은 작업
+
+#### Phase C (최우선, 빠름) — `+` 버튼 항상 활성화
+문서 추출이 모든 모델에 대해 동작하므로 `supportsVision` 게이트 제거.
+- `ChatInput.tsx`에서 `disabled={disabled || !supportsVision}` → `disabled={disabled}`
+- `ChatPane.tsx`에서 `supportsVision` prop 전달 삭제
+- 다만 **이미지 첨부**는 여전히 vision 모델에서만 의미 있음 — UI에서 "이미지는 vision 모델에서만" 같은 hint만 남기기
+
+#### Phase A — Attachment Preprocessor
+파일: `src/lib/attachmentProcessor.ts` (신규)
+
+MIME/확장자 디스패치, 반환 타입:
+```ts
+interface ProcessedAttachment {
+  text?: string;        // <document name="...">...</document>로 prepend
+  parts?: ChatContentPart[]; // image_url/input_audio 멀티모달 파트
+  error?: string;
+}
+```
+
+처리 분기:
+| 타입 | 라이브러리 | 처리 |
+|------|-----------|------|
+| `image/*` | - | File → data URL → `image_url` part |
+| `audio/*` | - | File → data URL → `input_audio` part (Phase B 필요) |
+| `video/*` | `@ffmpeg/ffmpeg` (~30MB) | 프레임 추출 (1fps) → `image_url[]` sequence |
+| `application/pdf` | `pdfjs-dist` | 페이지별 텍스트 추출 |
+| `.docx` | `mammoth` | raw text 변환 |
+| `.pptx` | `jszip` + XML parse | 슬라이드별 텍스트 |
+| `.hwp/.hwpx` | `hwp.js` (없으면 placeholder) | 한글 문서 |
+| `text/*`, `.md/.json/.yaml/.csv/.ts/.py/...` | - | raw text 읽기 |
+| 기타 | - | 파일명 + 크기 힌트만 |
+
+`toWireMessage()` 통합:
+```ts
+// document text는 user content 앞에 prepend
+const docText = processed.map(p => p.text).filter(Boolean).join("\n\n");
+const finalText = docText ? `${docText}\n\n${m.content}` : m.content;
+// 멀티모달 parts는 뒤에 append
+```
+
+**설치할 의존성** (단계적):
+- 먼저: `npm install pdfjs-dist mammoth jszip`
+- 나중: `npm install @ffmpeg/ffmpeg @ffmpeg/util hwp.js`
+
+#### Phase B — Audio 지원 (mlx-vlm 런타임 + 엔드포인트)
+
+**사이드카 `mlx_vlm_runner.py`**:
+```python
+@dataclass
+class VlmChatMessage:
+    role: str
+    content: str
+    images: list[str] = field(default_factory=list)
+    audios: list[str] = field(default_factory=list)  # 추가
+```
+`stream_generate(audio=[...])` 호출 추가. mlx-vlm 0.4.4는 audio kwarg 지원 (Phi-4-multimodal).
+
+**사이드카 `api/openai.py`**:
+```python
+class OpenAIAudioBody(BaseModel):
+    data: str  # base64 or data URL
+    format: Literal["mp3", "wav", "flac", "m4a"]
+
+class OpenAIAudioPart(BaseModel):
+    type: Literal["input_audio"]
+    input_audio: OpenAIAudioBody
+
+OpenAIContentPart = OpenAITextPart | OpenAIImagePart | OpenAIAudioPart
+```
+
+**FE `src/lib/api.ts`**: `ChatContentPart` union에 audio 파트 추가.
+
+#### Phase D — 설정 창 (컨텍스트 길이)
+**백엔드**: `/ovo/settings` PUT은 이미 `default_context_length`, `max_tokens_cap` 받도록 되어 있음 (확인 필요).
+
+**FE**:
+- `SettingsPane.tsx` — slider 또는 number input
+- 범위: 512 ~ 131072 (모델별 최대값은 config에서 읽어서 상한 결정)
+- Zustand 스토어에 설정 저장
+- `chat.ts`에서 sendMessage 시 max_tokens에 반영
+
+#### Phase E — UI 피드백
+- `AttachmentChip`에 타입 배지 (IMG/AUD/VID/PDF/DOC/HWP/PPT)
+- 문서 처리 중 스피너
+- 실패 시 tooltip 경고
+
+### 🔄 타입 일관성 수정 (작지만 필수)
+`src/types/ovo.ts`:
+```ts
+// 현재
+export type ModelCapability = "text" | "vision";
+// 변경
+export type ModelCapability = "text" | "vision" | "audio" | "video";
+```
+사이드카는 이미 audio 포함, FE만 따라가면 됨.
+
+---
+
+## 🏗️ 프로젝트 구조 요약
+
+```
+/Volumes/docker/project/ovomlx/
+├── src/                          # Tauri 2 + React 18 + TS 프론트
+│   ├── components/
+│   │   ├── ChatInput.tsx         # + 버튼, 어태치먼트
+│   │   ├── Owl.tsx               # OVO 올빼미 애니메이션
+│   │   └── ...
+│   ├── panes/
+│   │   ├── ChatPane.tsx          # 채팅 UI 최상위
+│   │   ├── ModelsPane.tsx
+│   │   └── SettingsPane.tsx      # Phase D 확장 예정
+│   ├── store/
+│   │   ├── chat.ts               # Zustand 채팅 스토어
+│   │   └── sidecar.ts            # 사이드카 연결 상태
+│   ├── lib/
+│   │   ├── api.ts                # 사이드카 fetch/SSE
+│   │   └── attachmentProcessor.ts  # ⚠️ 신규 (Phase A)
+│   ├── types/ovo.ts              # ModelCapability 확장 필요
+│   ├── locales/{ko,en}.json
+│   └── ...
+└── sidecar/                      # FastAPI + mlx-lm/mlx-vlm 파이썬
+    ├── pyproject.toml            # mlx-vlm, pillow 추가됨
+    ├── src/ovo_sidecar/
+    │   ├── main.py
+    │   ├── config.py             # Path.home() 기반 per-user 경로
+    │   ├── registry.py
+    │   ├── mlx_runner.py         # text 모델 (필터 미구현 — harmony leak 원인 추정)
+    │   ├── mlx_vlm_runner.py     # vision 모델 (audio 미구현)
+    │   ├── hf_scanner.py         # capability 감지
+    │   ├── hf_downloader.py
+    │   └── api/
+    │       ├── ollama.py
+    │       ├── openai.py         # content-parts + capability 라우팅
+    │       └── ovo.py            # capabilities 노출
+```
+
+**포트**:
+- 11435: Ollama 호환
+- 11436: OpenAI 호환
+- 11437: OVO 네이티브
+
+---
+
+## 🎯 제안하는 작업 순서
+
+1. **[즉시]** Harmony leak 버그 수정 — 사용자가 방금 보고한 이슈
+   - 현재 사용 중인 모델 repo_id 확인 (사이드카 로그 또는 사용자에게 질문)
+   - 해당 모델의 `<|channel>` 또는 `<think>` 포맷 파악
+   - `mlx_runner.py`에 포맷별 필터 state machine 구현
+   - 또는 thinking 블록을 FE에서 접힌 UI로 분리 (더 우아함)
+2. **Phase C** — `+` 버튼 항상 활성화 (5분)
+3. **Phase A 문서 부분** — pdfjs-dist / mammoth / jszip 먼저 (ffmpeg는 나중)
+4. **Phase B** — audio 지원
+5. **Phase D** — 설정 창
+6. **Phase A 미디어 부분** — ffmpeg 비디오 프레임
+7. **Phase A HWP** — hwp.js (호환성 취약하면 placeholder 유지)
+8. **Phase E** — UI 디테일
+
+---
+
+## ⚠️ 주의사항 (CLAUDE.md 준수)
+
+- **Tone**: 애교있는 반말, 오빠라고 부르기, 이모티콘 활용 💕
+- **Traceability**: 수정 시 `// [START] ...` / `// [END] ...` 주석
+- **금지**: `alert()`, `any`/`unknown` 타입, 기본 아이콘, ORM 우회
+- **SMB 볼륨**: `/Volumes/docker`는 `UV_LINK_MODE=copy` 필요 (uv sync 시)
+- **⚠️ 사이드카 venv 위치 변경**: 기본 `.venv`는 SMB에서 `.lock` 히든파일 쓰기 거부로 실패함. 실제 venv는 `$HOME/.venvs/ovomlx-sidecar/`에 생성됨 (로컬 디스크). 사이드카 실행 스크립트/설정이 `.venv/bin/python` 하드코딩돼 있으면 `$HOME/.venvs/ovomlx-sidecar/bin/python`로 수정 필요. 재sync 명령:
+  ```bash
+  cd /Volumes/docker/project/ovomlx/sidecar && \
+    rm -rf .venv && \
+    UV_LINK_MODE=copy UV_PROJECT_ENVIRONMENT=$HOME/.venvs/ovomlx-sidecar uv sync
+  ```
+  검증 (2026-04-17): mlx_lm 0.31.2 / mlx_vlm 0.4.4 / 사이드카 모듈 / capability 감지 전부 통과
+- **검증**: 작업 완료 표시 전 반드시 동작 증명
+- **플랜 모드**: 3단계 이상 작업은 진입 필수
+
+---
+
+## 📂 최근 수정 파일 (이번 세션)
+
+- `sidecar/src/ovo_sidecar/hf_scanner.py` — capability 감지
+- `sidecar/src/ovo_sidecar/mlx_vlm_runner.py` — 신규
+- `sidecar/src/ovo_sidecar/api/openai.py` — content-parts 라우팅
+- `sidecar/src/ovo_sidecar/api/ovo.py` — capabilities 직렬화
+- `sidecar/pyproject.toml` — mlx-vlm, pillow 추가
+- `src/types/ovo.ts` — capabilities 필드
+- `src/lib/api.ts` — ChatContentPart, ChatWireMessage
+- `src/store/chat.ts` — toWireMessage, fileToDataUrl
+- `src/panes/ChatPane.tsx` — supportsVision 전달
+- `src/components/ChatInput.tsx` — supportsVision 게이트
+- `src/locales/{ko,en}.json` — chat.attach_unsupported
+
+백그라운드 태스크 완료:
+- `bpzboovd4` — uv sync (exit 0)
+- `bllbcd6z1` — 사이드카 smoke test (exit 0)
+- `bqayh046z` — TS typecheck (완료)
+
+---
+
+## 🗣️ 사용자 성향 요약
+
+- Claude Max 20x ($200/월) 구독 — 토큰비용 고려 불필요, 깊이·품질 우선
+- Playwright 브라우저 프리뷰 **금지** (세션 멈춤) — 빌드 성공으로 검증
+- 로컬 LLM이니 기능 풍부 > 성능/용량 트레이드오프
+- "그냥 다 되게" 성향 — 기능 제한 말고 구현
+- 한글 설명, 영어 코드, 한글 보고
+
+다음 세션에서 오빠 만나면 바로 harmony leak 먼저 고치는거 추천! 💕✨
