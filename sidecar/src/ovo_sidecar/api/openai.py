@@ -2,24 +2,58 @@ import json
 import logging
 import time
 import uuid
-from typing import Any
+from typing import Any, Literal
 
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from ovo_sidecar import hf_scanner
 from ovo_sidecar.config import settings
 from ovo_sidecar.mlx_runner import ChatMessage, runner
+from ovo_sidecar.mlx_vlm_runner import VlmChatMessage, vlm_runner
 from ovo_sidecar.registry import registry
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["openai"])
 
 
+# [START] OpenAI content-parts — `content` may be a plain string OR a list of
+# parts mixing text and image_url. We accept both shapes and normalize downstream.
+class OpenAITextPart(BaseModel):
+    type: Literal["text"]
+    text: str
+
+
+class OpenAIImageUrlBody(BaseModel):
+    url: str
+
+
+class OpenAIImagePart(BaseModel):
+    type: Literal["image_url"]
+    image_url: OpenAIImageUrlBody
+
+
+OpenAIContentPart = OpenAITextPart | OpenAIImagePart
+
+
 class OpenAIMessage(BaseModel):
     role: str
-    content: str
+    content: str | list[OpenAIContentPart]
+
+
+def _split_content(content: str | list[OpenAIContentPart]) -> tuple[str, list[str]]:
+    if isinstance(content, str):
+        return content, []
+    text_parts: list[str] = []
+    images: list[str] = []
+    for p in content:
+        if isinstance(p, OpenAITextPart):
+            text_parts.append(p.text)
+        else:
+            images.append(p.image_url.url)
+    return "\n".join(text_parts), images
+# [END]
 
 
 class OpenAIChatRequest(BaseModel):
@@ -72,23 +106,66 @@ async def list_models() -> dict[str, Any]:
 @router.post("/chat/completions")
 async def chat_completions(req: OpenAIChatRequest):
     model_id = _resolve_ref(req.model)
-    messages = [ChatMessage(role=m.role, content=m.content) for m in req.messages]
     max_tokens = _cap(req.max_tokens)
     completion_id = f"chatcmpl-{uuid.uuid4().hex[:24]}"
     created = int(time.time())
+
+    # [START] Capability-based routing: vision-capable models go through mlx-vlm
+    # which handles both text-only and image-bearing turns; text-only models
+    # reject images to surface the mismatch loudly instead of silently dropping.
+    repo_id = registry.resolve(req.model)
+    caps = hf_scanner.resolve_capabilities(repo_id)
+    is_vision = "vision" in caps
+
+    normalized: list[tuple[str, str, list[str]]] = []
+    for m in req.messages:
+        text, images = _split_content(m.content)
+        normalized.append((m.role, text, images))
+
+    has_any_images = any(imgs for _, _, imgs in normalized)
+    if has_any_images and not is_vision:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"model {req.model} is text-only; attach-capable models must declare "
+                f"the 'vision' capability (e.g. Qwen2-VL, LLaVA, Gemma3)."
+            ),
+        )
+    # [END]
+
+    if is_vision:
+        vlm_messages = [VlmChatMessage(role=r, content=t, images=imgs) for r, t, imgs in normalized]
+
+        def _vlm_stream():
+            return vlm_runner.stream_chat(
+                model_id,
+                vlm_messages,
+                max_tokens=max_tokens,
+                temperature=req.temperature,
+                top_p=req.top_p,
+            )
+
+        stream_iter = _vlm_stream
+    else:
+        text_messages = [ChatMessage(role=r, content=t) for r, t, _ in normalized]
+
+        def _text_stream():
+            return runner.stream_chat(
+                model_id,
+                text_messages,
+                max_tokens=max_tokens,
+                temperature=req.temperature,
+                top_p=req.top_p,
+            )
+
+        stream_iter = _text_stream
 
     if req.stream:
 
         async def event_stream():
             first = True
             final_reason = "stop"
-            async for chunk in runner.stream_chat(
-                model_id,
-                messages,
-                max_tokens=max_tokens,
-                temperature=req.temperature,
-                top_p=req.top_p,
-            ):
+            async for chunk in stream_iter():
                 delta: dict[str, Any] = {"content": chunk.text}
                 if first:
                     delta = {"role": "assistant", "content": chunk.text}
@@ -119,13 +196,7 @@ async def chat_completions(req: OpenAIChatRequest):
     final_reason = "stop"
     prompt_tokens = 0
     gen_tokens = 0
-    async for chunk in runner.stream_chat(
-        model_id,
-        messages,
-        max_tokens=max_tokens,
-        temperature=req.temperature,
-        top_p=req.top_p,
-    ):
+    async for chunk in stream_iter():
         content += chunk.text
         if chunk.done:
             final_reason = chunk.finish_reason or "stop"

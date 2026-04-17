@@ -48,6 +48,9 @@ def _serialize_model(m: hf_scanner.ScannedModel) -> dict[str, Any]:
         # [START] surface cache source so UI can distinguish HF vs LM Studio
         "source": m.source,
         # [END]
+        # [START] capabilities gate client-side features (e.g. image attachments)
+        "capabilities": list(m.capabilities),
+        # [END]
     }
 
 

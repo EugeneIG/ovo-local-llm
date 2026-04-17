@@ -17,6 +17,58 @@ class ScannedModel:
     config: dict
     is_mlx: bool
     source: str = "hf"
+    capabilities: tuple[str, ...] = ("text",)
+
+
+# [START] Modality detection — HF config.json signals which non-text modalities
+# the model actually supports. `model_type` is the primary signal (matches
+# Transformers' registry); sub-config presence is a fallback for custom/new
+# architectures. Each modality is independent so a single model can claim
+# multiple (e.g. Phi-4-multimodal has vision + audio).
+_VISION_MODEL_TYPES: frozenset[str] = frozenset({
+    "qwen2_vl", "qwen2_5_vl", "qwen3_vl",
+    "llava", "llava_next", "llava_onevision", "llava_next_video",
+    "minicpmv",
+    "idefics2", "idefics3",
+    "mllama",
+    "internvl_chat",
+    "paligemma",
+    "phi3_v",
+    "phi4_multimodal",
+    "gemma3",
+    "mistral3",
+    "smolvlm",
+    "pixtral",
+})
+
+_AUDIO_MODEL_TYPES: frozenset[str] = frozenset({
+    "phi4_multimodal",
+    "qwen2_audio",
+    "qwen2_5_omni",
+})
+
+
+def detect_capabilities(config: dict) -> tuple[str, ...]:
+    model_type = str(config.get("model_type") or "").lower()
+    caps: list[str] = ["text"]
+
+    has_vision = (
+        model_type in _VISION_MODEL_TYPES
+        or "vision_config" in config
+        or "vision_tower" in config
+    )
+    has_audio = (
+        model_type in _AUDIO_MODEL_TYPES
+        or "audio_config" in config
+        or "audio_processor_config" in config
+    )
+
+    if has_vision:
+        caps.append("vision")
+    if has_audio:
+        caps.append("audio")
+    return tuple(caps)
+# [END]
 
 
 def _repo_id_from_cache(cache_dir: Path) -> str:
@@ -61,6 +113,7 @@ def _build_scanned(
         config=config,
         is_mlx=_detect_mlx(config, files, repo_id),
         source=source,
+        capabilities=detect_capabilities(config),
     )
 
 
@@ -135,4 +188,12 @@ def resolve_path(repo_id: str) -> Path | None:
         if m.repo_id == repo_id:
             return m.snapshot_path
     return None
+
+
+def resolve_capabilities(repo_id: str) -> tuple[str, ...]:
+    """Look up capabilities for a local model by repo_id. Unknown → text-only."""
+    for m in scan_all():
+        if m.repo_id == repo_id:
+            return m.capabilities
+    return ("text",)
 # [END]
