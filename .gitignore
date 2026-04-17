@@ -1,0 +1,50 @@
+# Dependencies
+node_modules/
+python_modules/
+.venv/
+__pycache__/
+*.pyc
+
+# Build outputs
+dist/
+build/
+out/
+target/
+*.dmg
+*.app
+
+# Tauri
+src-tauri/target/
+src-tauri/gen/
+
+# Python sidecar (uv)
+sidecar/.venv/
+sidecar/dist/
+sidecar/build/
+sidecar/*.spec
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+
+# Env & secrets
+.env
+.env.*
+!.env.example
+
+# Logs
+*.log
+logs/
+
+# OS
+Thumbs.db
+
+# Local state
+.claude/
+.omc/
+ovo-data/
+*.sqlite
+*.sqlite-journal
