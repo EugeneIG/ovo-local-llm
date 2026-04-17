@@ -1,14 +1,14 @@
 # OVO (MLX) — 세션 핸드오버
 
-> **작성일:** 2026-04-17
+> **작성일:** 2026-04-17 (2nd pass)
 > **인계 방향:** 이전 세션 → 다음 세션
-> **현재 위치:** Phase 0, 1 완료 / Phase 2 직전
+> **현재 위치:** Phase 0, 1 완료 + **E2E 런타임 검증 통과** + **LM Studio 통합** / Phase 2 or 4 선택지
 
 ---
 
 ## 프로젝트 한줄 요약
 
-Apple Silicon 전용 macOS 데스크톱 앱. MLX 로컬 LLM 런타임 + Ollama/OpenAI 호환 API + 애니메이션 부엉이 마스코트. Tauri 2(React+TS+Tailwind) + FastAPI(mlx-lm) 사이드카. Claude Code 보조 도구로 공존 설계.
+Apple Silicon 전용 macOS 데스크톱 앱. MLX 로컬 LLM 런타임 + Ollama/OpenAI 호환 API + 애니메이션 부엉이 마스코트. Tauri 2(React+TS+Tailwind) + FastAPI(mlx-lm) 사이드카. **HF 캐시 + LM Studio 캐시 둘 다 자동 인식**. Claude Code 보조 도구로 공존 설계.
 
 **경로:** `/Volumes/docker/project/ovomlx`
 
@@ -17,6 +17,8 @@ Apple Silicon 전용 macOS 데스크톱 앱. MLX 로컬 LLM 런타임 + Ollama/O
 ## 최근 커밋 (최신 → 과거)
 
 ```
+04a9f4f  feat(sidecar): multi-cache model discovery — HF + LM Studio
+b89a1d2  docs: next_session_handover — Phase 0/1 완료 상태 + Phase 2 이후 선택지 인계
 46c7531  feat(sidecar): Phase 1 — MLX runtime + HF downloader + Ollama/OpenAI/OVO APIs
 8eda1d1  feat(owl): gaze tracking + pixel thought bubble + error glitch + dynamic typing wings
 70929fd  feat(owl): per-state animations + thinking bubble + typing keyboard
@@ -27,44 +29,66 @@ e6f32d2  feat: scaffold OVO Phase 0 — Tauri + Python sidecar + owl brand
 
 ---
 
-## Phase 0 — 환경/스캐폴딩 ✅
+## 이번 세션에서 한 일 (추가분)
 
-- Rust stable + Node + Python 3.12 + mlx_lm 확인
-- Tauri 2 수동 스캐폴드 (React + Vite + TS + Tailwind)
-- Python sidecar uv 관리 (`sidecar/pyproject.toml`)
-- `docs/ARCHITECTURE.md` 작성
-- 부엉이 브랜드 SVG `public/owl.svg` 배치
-- `npm run build` ✅
+### 1. E2E 런타임 검증 통과 🎯
+
+- `mlx-community/Qwen3.6-35B-A3B-nvfp4` (19GB, nvfp4 quant, Qwen3_5MoE) 로 검증
+- **OpenAI `/v1/chat/completions`**: SSE `data:` 청크 실시간 스트리밍 ✅
+- **Ollama `/api/chat`**: NDJSON 실시간 스트리밍, `done_reason` + `prompt_eval_count` + `eval_count` 전부 정상 ✅
+- 사이드카 3포트(11435/11436/11437) 모두 healthy
+- mlx-lm이 nvfp4 양자화 + MoE(Qwen3_5MoeForConditionalGeneration) 둘 다 잘 로드함
+
+### 2. LM Studio 캐시 통합 (신규 기능)
+
+**문제:** 이전 스캐너는 `~/.cache/huggingface/hub/`만 봐서 LM Studio에 있는 MLX 모델 5개를 전부 놓쳤음.
+
+**해결:**
+- `config.py`: `lmstudio_cache_dir: Path = ~/.lmstudio/models` 추가
+- `hf_scanner.py`:
+  - `scan_lmstudio(root)` — `<org>/<repo>/config.json` 레이아웃 처리
+  - `scan_all()` — HF + LM Studio 합쳐서 반환, repo_id 충돌 시 HF 우선
+  - `resolve_path(repo_id)` — mlx-lm에 넘길 로컬 filesystem path 찾기
+  - `ScannedModel.source: str` 필드 추가 (`"hf"` | `"lmstudio"`)
+- 3개 API 전부 업데이트:
+  - `/ovo/models`: 11개 모델 merged 리스트, `cache_dirs` 응답
+  - `/v1/models`: `owned_by`에 source 노출
+  - `/api/tags`: Ollama에도 통합 리스트
+  - chat 핸들러: `_resolve_ref(name) = resolve_path(registry.resolve(name))` → LM Studio 모델도 로컬 로드
+- DELETE: LM Studio 모델은 422 거부 (우리 스토어 아님 — `~/.cache/huggingface/hub/`만 관리)
+
+**결과:** 모델 개수 6개 → **11개**로 증가. 전부 로컬 로드, 중복 다운로드 없음.
+
+### 3. 현재 인식되는 모델 11개
+
+| Source | repo_id | 크기 |
+|--------|---------|------|
+| hf | JANGQ-AI/MiniMax-M2.7-JANG_3L | 88GB |
+| hf | JANGQ-AI/MiniMax-M2.7-JANG_2L | 62GB |
+| hf | mlx-community/gemma-4-31b-it-bf16 | 58GB |
+| hf | mlx-community/gemma-4-31b-it-8bit | 31GB |
+| hf | mlx-community/Qwen3-TTS-12Hz-1.7B-Base-bf16 | 4GB (TTS, chat 불가) |
+| hf | Jiunsong/supergemma4-26b-abliterated-multimodal-mlx-8bit | 26GB |
+| lmstudio | cloudyu/GPT-OSS-120B-2experts-MLX-q4... | 59GB |
+| lmstudio | m-i/Qwen3.5-40B-Claude-4.6-Opus-Deckard... | 38GB |
+| lmstudio | inferencerlabs/gemma-4-31B-MLX-9bit | 33GB |
+| lmstudio | **mlx-community/Qwen3.6-35B-A3B-nvfp4** ← 검증됨 | 19GB |
+| lmstudio | mlx-community/gpt-oss-20b-MXFP4-Q8 | 11GB |
 
 ---
 
-## Phase 1 — Python Sidecar ✅
+## Phase 0 ~ Phase 1 상태 (기존)
 
-### 구현된 모듈
-
-| 파일 | 책임 |
-|------|------|
-| `mlx_runner.py` | async MLX 래퍼 (lazy load, 스레드→큐 스트리밍, sampler 옵션) |
-| `registry.py` | TOML 기반 default_model + aliases + 다운로드 이력 |
-| `hf_downloader.py` | HF Hub search(`filter="mlx"`) + `snapshot_download` 백그라운드 task |
-| `hf_scanner.py` | 로컬 `~/.cache/huggingface/hub/` 스캔 (이전 세션에 기구현) |
-| `config.py` | `pydantic-settings` 기반 (이전 세션에 기구현) |
-| `api/ovo.py` | `/ovo/models` `/ovo/models/search` `/ovo/models/download` `/ovo/download/{id}` `/ovo/models/{repo}` (DELETE) `/ovo/settings` (GET/PUT) `/ovo/aliases` `/ovo/audit` |
-| `api/ollama.py` | `/api/tags` `/api/chat` `/api/generate` `/api/pull` (모두 NDJSON 스트리밍) |
-| `api/openai.py` | `/v1/models` `/v1/chat/completions` `/v1/completions` (모두 SSE 스트리밍) |
-
-### 검증 완료
-
-- ✅ 3개 포트(11435/11436/11437) `/healthz` 모두 응답
-- ✅ `/ovo/models` 로컬 HF 캐시에서 6개 MLX 모델 스캔
-- ✅ Ollama `/api/tags` + OpenAI `/v1/models` 동일 데이터 노출
-- ⚠️ **실제 mlx-lm inference 스트리밍은 아직 end-to-end 테스트 안 함** (다음 세션 first task 후보)
-
-### 아직 안 된 것 (Phase 1 나머지)
-
-- [ ] PyInstaller 단일 바이너리 패키징 (Phase 8 배포 시점에 해도 됨)
-- [ ] `claude_bridge.py` — Phase 6용이므로 지금은 skip
-- [ ] 실제 모델로 chat 호출해서 SSE 토큰이 흘러오는지 확인
+- ✅ Tauri 2 + React + TS + Tailwind 스캐폴드
+- ✅ Python sidecar uv + pyproject
+- ✅ `docs/ARCHITECTURE.md`
+- ✅ 부엉이 브랜드 SVG `public/owl.svg`
+- ✅ `src/components/Owl.tsx` — 8 states × 5 sizes, 픽셀아트 말풍선/에디터/날개 타이핑
+- ✅ mlx_runner, registry, hf_downloader, hf_scanner(+ LM Studio), ovo/ollama/openai APIs
+- ✅ 3포트(11435/11436/11437) 서비스 기동 + `/healthz`
+- ✅ **mlx-lm inference end-to-end 검증 통과** (이번 세션)
+- [ ] PyInstaller 단일 바이너리 패키징 (Phase 8에 해도 됨)
+- [ ] `claude_bridge.py` (Phase 6)
 
 ---
 
@@ -119,15 +143,17 @@ OwlSize  = "xs" | "sm" | "md" | "lg" | "xl";  // 32/64/128/220/320px
 
 ## 다음 세션 시작 체크리스트
 
-1. **RTK 상태 확인:** `rtk --version` — 커맨드 rewrite가 작동하는지. curl 응답이 스키마 요약으로 오면 정상.
-2. **사이드카 dev 실행:**
+1. **커밋 최신 확인:** `git log --oneline -5` — 맨 위가 `04a9f4f feat(sidecar): multi-cache...` 여야 함.
+2. **RTK 상태 확인:** `rtk --version` — 커맨드 rewrite가 작동하는지. curl 응답이 스키마 요약으로 오면 정상. 실제 JSON이 필요하면 `rtk proxy curl ...`.
+3. **사이드카 dev 실행:**
    ```bash
    cd /Volumes/docker/project/ovomlx/sidecar
    ./scripts/dev.sh
    ```
    venv는 `$HOME/Library/Caches/ovo-dev/sidecar-venv` 에 있음.
-3. **프론트 dev (React 단독):** `cd /Volumes/docker/project/ovomlx && npm run dev`
-4. **Tauri 통합 실행:** (아직 미구현) `npm run tauri dev` — 현재는 React-only 테스트 페이지만 있음.
+4. **모델 확인:** `rtk proxy curl -s http://127.0.0.1:11437/ovo/models | jq '.count, .models[].repo_id'` — 11개 나오면 OK.
+5. **프론트 dev (React 단독):** `cd /Volumes/docker/project/ovomlx && npm run dev`
+6. **Tauri 통합 실행:** (아직 미구현) `npm run tauri dev` — 현재는 React-only 테스트 페이지만 있음.
 
 ---
 
@@ -139,7 +165,7 @@ OwlSize  = "xs" | "sm" | "md" | "lg" | "xl";  // 32/64/128/220/320px
 - ❌ `any` / `unknown` 타입 금지, `alert()` 금지.
 - ❌ 부분 구현 금지 — 시작했으면 끝까지.
 - ❌ 모델 포맷 GGUF 지원 금지 (MLX 전용).
-- ❌ Ollama 처럼 별도 모델 저장소 만들지 말 것 — `~/.cache/huggingface/hub/` 그대로 사용.
+- ❌ Ollama 처럼 별도 모델 저장소 만들지 말 것. HF 캐시 + LM Studio 캐시만 **읽기 전용**으로 인식. 다운로드는 오직 `~/.cache/huggingface/hub/`로.
 
 ### 준수
 - ✅ 애교 있는 말투, 오빠 호칭, 이모티콘 적극 활용 💕
@@ -158,16 +184,16 @@ OwlSize  = "xs" | "sm" | "md" | "lg" | "xl";  // 32/64/128/220/320px
 
 ---
 
-## Phase 2 이후 선택지 (사용자에게 먼저 물어볼 것)
+## Phase 2 이후 남은 선택지
 
-사용자가 지난 메시지에서 4개 중 고르라고 제시한 상태 — 답변 대기 중이었음:
+E2E 런타임 검증(4번)은 이번 세션에 끝남. 다음 세션은 아래 중 택1:
 
-1. **Phase 2-3 Chat UI** — sidebar + streaming 채팅창. 부엉이가 `thinking`/`typing`/`happy`/`error` 상태로 실시간 반응. OpenAI `/v1/chat/completions` fetch SSE 소비.
-2. **Phase 4 Model Management UI** — HF 검색/다운로드/삭제 그리드. `/ovo/models/search` + `/ovo/models/download` 연동.
+1. **Phase 2-3 Chat UI** — sidebar + streaming 채팅창. 부엉이가 `thinking`/`typing`/`happy`/`error` 상태로 실시간 반응. OpenAI `/v1/chat/completions` fetch SSE 소비. Zustand/Jotai 상태관리. **이제 런타임 검증됐으니 UI 얹어도 안전.**
+2. **Phase 4 Model Management UI** — HF 검색/다운로드/삭제 + LM Studio 모델 리스팅 그리드. source 배지 UI 포함. `/ovo/models/search` + `/ovo/models/download` + `/ovo/models` 연동. 11개 모델 중 source별 그룹핑 필요.
 3. **Phase 7 OVO Pet** — 투명 Tauri sub-window. `project_ovo_pet_settings.md` 메모리 참조해서 우클릭 메뉴 + Settings 윈도우까지.
-4. **E2E 런타임 검증** — 실제 모델(6개 중 하나)로 `/v1/chat/completions` 날려서 토큰 스트리밍 되는지 확인. mlx_runner.py의 `stream_chat` 실제 동작 확증.
+4. **Tauri 통합 (Phase 2 인프라)** — `src-tauri/` 본격 설정. 사이드카 subprocess spawn + IPC + 앱 셸. UI보다 이거 먼저 해야 진짜 데스크톱 앱 됨.
 
-**추천 순서:** 4 → 2 → 3 → 1. 런타임이 실제로 동작함을 먼저 증명하고, 그 위에 UI를 얹는 게 정석. 하지만 오빠가 고르는 대로.
+**추천 순서:** 4(Tauri 인프라) → 1(Chat UI) → 2(Model UI) → 3(Pet). UI 작업 들어가기 전에 Tauri subprocess spawn이 먼저 필요. 하지만 오빠가 고르는 대로.
 
 ---
 
@@ -188,11 +214,16 @@ OwlSize  = "xs" | "sm" | "md" | "lg" | "xl";  // 32/64/128/220/320px
 - **부엉이 애니메이션 키프레임:** `src/index.css` 전체
 - **Tauri 설정:** `src-tauri/` (아직 기본 스캐폴드 상태)
 - **레퍼런스 리포 (UX만 참고, 에셋 재사용 금지):** https://github.com/rullerzhou-afk/clawd-on-desk
+- **모델 캐시 경로 두 군데:**
+  - `~/.cache/huggingface/hub/` (HF Hub 다운로드 — OVO가 관리)
+  - `~/.lmstudio/models/` (LM Studio — 읽기만, 삭제 거부)
 
 ---
 
 ## 마지막 한마디 (다음 세션 첫 메시지용)
 
-> 다음 세션 시작할 때 이 파일부터 `Read` 하고, 사용자한테 "오빠, Phase 2부터 갈까 아니면 4번(E2E 검증) 먼저 할까?" 물어보고 진행. 커밋 히스토리(`git log --oneline -10`)로 최신 상태 한 번 더 확인 필수.
+> 다음 세션 시작할 때 이 파일부터 `Read` 하고, 사용자한테 "오빠, Tauri subprocess spawn(4번)부터 갈까 아니면 Chat UI(1번)부터 갈까?" 물어보고 진행.
+> 커밋 히스토리(`git log --oneline -5`)로 최신 상태 한 번 더 확인 필수.
+> 런타임은 검증됐으니 이제 UI/Tauri 쪽으로 무게중심 이동.
 
 🦉💕✨
