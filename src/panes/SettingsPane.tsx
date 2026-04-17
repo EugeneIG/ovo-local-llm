@@ -452,10 +452,7 @@ function ToolModeSection() {
   const mode = useToolModeStore((s) => s.mode);
   const setMode = useToolModeStore((s) => s.setMode);
   return (
-    <section className="py-4 border-b border-ovo-border">
-      <h3 className="text-sm font-semibold text-ovo-text mb-2">
-        {t("settings.tool_mode.section_title")}
-      </h3>
+    <CollapsibleSection id="tool_mode" title={t("settings.tool_mode.section_title")}>
       <p className="text-xs text-ovo-muted mb-3">
         {t("settings.tool_mode.description")}
       </p>
@@ -477,7 +474,7 @@ function ToolModeSection() {
           </label>
         ))}
       </div>
-    </section>
+    </CollapsibleSection>
   );
 }
 // [END]

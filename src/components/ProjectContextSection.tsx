@@ -1,6 +1,7 @@
 import { open } from "@tauri-apps/plugin-dialog";
 import { useTranslation } from "react-i18next";
 import { useProjectContextStore } from "../store/project_context";
+import { CollapsibleSection } from "./CollapsibleSection";
 
 // [START] Phase 6.1 — ProjectContextSection
 // Shown in SettingsPane before the "컨텍스트 관리" section.
@@ -67,11 +68,10 @@ export function ProjectContextSection() {
   // [END]
 
   return (
-    <section className="py-4 border-b border-ovo-border">
-      {/* Header */}
-      <h3 className="text-sm font-semibold text-ovo-text mb-1">
-        {t("settings.project_context.section_title")}
-      </h3>
+    <CollapsibleSection
+      id="project_context"
+      title={t("settings.project_context.section_title")}
+    >
       <p className="text-xs text-ovo-muted mb-4">
         {t("settings.project_context.description")}
       </p>
@@ -227,7 +227,7 @@ export function ProjectContextSection() {
         </p>
       )}
       {/* [END] */}
-    </section>
+    </CollapsibleSection>
   );
 }
 // [END]
