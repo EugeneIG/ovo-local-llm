@@ -2,6 +2,7 @@ import { create } from "zustand";
 import i18n from "i18next";
 import {
   streamChat,
+  webSearch,
   type ChatContentPart,
   type ChatWireMessage,
 } from "../lib/api";
@@ -27,7 +28,7 @@ import { saveAttachment, readAttachmentAsDataUrl } from "../lib/attachmentStorag
 // [START] Phase 6.2c — MCP tool-use integration
 import { useMcpStore } from "./mcp";
 import { mcpCall } from "../lib/mcp";
-import { parseToolUseBlock, buildToolsSystemMessage } from "../lib/toolUse";
+import { parseToolUseBlock, buildToolsSystemMessage, BUILTIN_TOOLS, isBuiltinTool } from "../lib/toolUse";
 import { useToastsStore } from "./toasts";
 // [END]
 
@@ -220,6 +221,22 @@ export const useChatStore = create<ChatStoreState>((set, get) => {
   }
   // [END]
 
+  // [START] Phase 6.4 — dispatch a built-in OVO tool (hosted by the sidecar,
+  // no MCP server involved). Returns the raw result object the caller will
+  // JSON-serialize and feed back as a <tool_result>.
+  async function dispatchBuiltin(
+    name: string,
+    args: Record<string, unknown>,
+  ): Promise<unknown> {
+    if (name === "web_search") {
+      const query = typeof args.query === "string" ? args.query : "";
+      const limit = typeof args.limit === "number" && args.limit > 0 ? args.limit : 8;
+      return await webSearch(query, limit);
+    }
+    throw new Error(`Unknown built-in tool: ${name}`);
+  }
+  // [END]
+
   // [START] _sendOne — actual single-turn execution; sendMessage wraps this
   // with mode-aware dispatch logic.
   // toolLoopDepth: recursion counter for tool-call chaining; capped at 5.
@@ -365,7 +382,9 @@ export const useChatStore = create<ChatStoreState>((set, get) => {
 
       // [START] Phase 6.2c — inject MCP tool descriptions as transient system message.
       // Prepended before any project-context system block, concatenated with \n\n---\n\n.
-      const allTools = useMcpStore.getState().getAllTools();
+      // Phase 6.4: OVO built-in tools (web_search etc.) always appear alongside
+      // whatever MCP servers the user has configured.
+      const allTools = [...BUILTIN_TOOLS, ...useMcpStore.getState().getAllTools()];
       if (allTools.length > 0) {
         const toolsPrompt = buildToolsSystemMessage(allTools);
         if (wire.length > 0 && wire[0].role === "system") {
@@ -558,8 +577,15 @@ export const useChatStore = create<ChatStoreState>((set, get) => {
           return;
         }
 
-        // Resolve server_id
-        const serverId = resolveServerId(call.name);
+        // Resolve dispatch target — built-in (OVO-hosted) tools bypass the
+        // MCP pool entirely and hit /ovo/* endpoints directly.
+        const isBuiltin = isBuiltinTool(call.name);
+        const serverId = isBuiltin ? null : resolveServerId(call.name);
+        const runTool = async (): Promise<unknown> => {
+          if (isBuiltin) return await dispatchBuiltin(call.name, call.arguments);
+          if (serverId === null) throw new Error(`Tool not found: ${call.name}`);
+          return await mcpCall(serverId, call.name, call.arguments);
+        };
         let resultJson: string;
         // [START] Tool-approval mode — plan / ask / bypass (default bypass)
         const { useToolModeStore } = await import("./tool_mode");
@@ -571,7 +597,7 @@ export const useChatStore = create<ChatStoreState>((set, get) => {
             plan_only: true,
             note: `Tool '${call.name}' was not executed (plan mode).`,
           });
-        } else if (serverId === null) {
+        } else if (!isBuiltin && serverId === null) {
           resultJson = JSON.stringify({ error: `Tool not found: ${call.name}` });
         } else if (mode === "ask") {
           // Minimal approval UX — confirm dialog. The Claude-parity richer UI
@@ -584,8 +610,7 @@ export const useChatStore = create<ChatStoreState>((set, get) => {
             resultJson = JSON.stringify({ error: "User denied tool call." });
           } else {
             try {
-              const result = await mcpCall(serverId, call.name, call.arguments);
-              resultJson = JSON.stringify(result);
+              resultJson = JSON.stringify(await runTool());
             } catch (e) {
               const errMsg = e instanceof Error ? e.message : String(e);
               resultJson = JSON.stringify({ error: errMsg });
@@ -594,8 +619,7 @@ export const useChatStore = create<ChatStoreState>((set, get) => {
         } else {
           // bypass — execute immediately
           try {
-            const result = await mcpCall(serverId, call.name, call.arguments);
-            resultJson = JSON.stringify(result);
+            resultJson = JSON.stringify(await runTool());
           } catch (e) {
             const errMsg = e instanceof Error ? e.message : String(e);
             resultJson = JSON.stringify({ error: errMsg });

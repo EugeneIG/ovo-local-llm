@@ -3,6 +3,38 @@
 
 import type { McpTool } from "./mcp";
 
+// [START] Phase 6.4 — OVO built-in tools.
+// These are hosted by the Python sidecar (/ovo/*) and are always available
+// regardless of whether any MCP server is registered. The server_id namespace
+// 'ovo:builtin' is reserved so the chat dispatcher can route them internally
+// instead of through the MCP pool.
+export const BUILTIN_SERVER_ID = "ovo:builtin";
+
+export const BUILTIN_TOOLS: McpTool[] = [
+  {
+    name: "web_search",
+    description:
+      "OVO 내장 인터넷 검색 (DuckDuckGo 기반, API 키 불필요). 최신 정보가 필요할 때 사용.",
+    input_schema: {
+      type: "object",
+      properties: {
+        query: { type: "string", description: "검색어" },
+        limit: {
+          type: "integer",
+          description: "최대 결과 수 (기본 8, 최대 20)",
+          default: 8,
+        },
+      },
+      required: ["query"],
+    },
+  },
+];
+
+export function isBuiltinTool(name: string): boolean {
+  return BUILTIN_TOOLS.some((tool) => tool.name === name);
+}
+// [END]
+
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 export interface ParsedToolCall {

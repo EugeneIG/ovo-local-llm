@@ -315,3 +315,77 @@ async def unload_loaded_models() -> dict[str, Any]:
     model_lifecycle.release_gpu_memory()
     return {"freed": freed}
 # [END]
+
+
+# [START] Phase 6.4 — built-in web search (key-less).
+# Backed by duckduckgo-search so the OVO frontend can expose a 'web_search'
+# tool that works out of the box without the user registering any API key.
+# Intentionally kept minimal: title / url / snippet per hit, capped result
+# count, no infinite pagination.
+class WebSearchRequest(BaseModel):
+    query: str
+    limit: int = 8
+
+
+class WebSearchHit(BaseModel):
+    title: str
+    url: str
+    snippet: str
+
+
+class WebSearchResponse(BaseModel):
+    query: str
+    results: list[WebSearchHit]
+
+
+@router.post("/websearch", response_model=WebSearchResponse)
+async def websearch(req: WebSearchRequest) -> WebSearchResponse:
+    """Return DuckDuckGo text search hits for the given query.
+
+    Runs the (sync) duckduckgo-search client in a worker thread so the
+    event loop isn't blocked. Errors bubble up as HTTP 502 — callers
+    should treat the tool as best-effort and fall back gracefully.
+    """
+    import asyncio
+
+    query = req.query.strip()
+    if not query:
+        raise HTTPException(status_code=400, detail="empty query")
+    limit = max(1, min(req.limit, 20))
+
+    try:
+        # [START] Lazy import so sidecar startup doesn't pay the cost when
+        # nobody ever calls web search.
+        from duckduckgo_search import DDGS
+        # [END]
+    except Exception as e:  # pragma: no cover — missing optional dep
+        logger.warning("duckduckgo-search import failed: %s", e)
+        raise HTTPException(
+            status_code=501,
+            detail="web search backend unavailable (duckduckgo-search not installed)",
+        ) from e
+
+    def _run() -> list[dict[str, Any]]:
+        with DDGS() as ddgs:
+            # duckduckgo-search returns dicts with keys: title, href, body
+            return list(ddgs.text(query, max_results=limit))
+
+    try:
+        raw = await asyncio.to_thread(_run)
+    except Exception as e:
+        logger.warning("web search failed: %s", e)
+        raise HTTPException(status_code=502, detail=f"web search failed: {e}") from e
+
+    hits: list[WebSearchHit] = []
+    for r in raw:
+        if not isinstance(r, dict):
+            continue
+        hits.append(
+            WebSearchHit(
+                title=str(r.get("title") or ""),
+                url=str(r.get("href") or r.get("url") or ""),
+                snippet=str(r.get("body") or r.get("snippet") or ""),
+            )
+        )
+    return WebSearchResponse(query=query, results=hits)
+# [END]

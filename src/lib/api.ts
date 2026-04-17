@@ -247,3 +247,31 @@ export async function unloadLoadedModels(
   return jsonOrThrow<{ freed: string[] }>(resp);
 }
 // [END]
+
+// [START] Phase 6.4 — OVO built-in web search (key-less, DuckDuckGo-backed).
+// Surfaces as a 'web_search' tool in the MCP catalog (see lib/toolUse.ts)
+// and is routed to this endpoint instead of the MCP pool.
+export interface WebSearchHit {
+  title: string;
+  url: string;
+  snippet: string;
+}
+
+export interface WebSearchResult {
+  query: string;
+  results: WebSearchHit[];
+}
+
+export async function webSearch(
+  query: string,
+  limit = 8,
+  ports: SidecarPorts = DEFAULT_PORTS,
+): Promise<WebSearchResult> {
+  const resp = await fetch(`${nativeBase(ports)}/ovo/websearch`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ query, limit }),
+  });
+  return jsonOrThrow<WebSearchResult>(resp);
+}
+// [END]
