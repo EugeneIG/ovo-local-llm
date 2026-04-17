@@ -57,17 +57,31 @@ function ToolBadge({ tools, label }: ToolBadgeProps) {
 
 // ── Add server form ───────────────────────────────────────────────────────────
 
+interface AddServerFormInitial {
+  name?: string;
+  command?: string;
+  args?: string[];
+  env?: Record<string, string>;
+}
+
 interface AddServerFormProps {
   onAdd: (cfg: { name: string; command: string; args: string[]; env: Record<string, string> }) => Promise<void>;
   onCancel: () => void;
+  initial?: AddServerFormInitial;
 }
 
-function AddServerForm({ onAdd, onCancel }: AddServerFormProps) {
+function envMapToRaw(env: Record<string, string>): string {
+  return Object.entries(env)
+    .map(([k, v]) => `${k}=${v}`)
+    .join("\n");
+}
+
+function AddServerForm({ onAdd, onCancel, initial }: AddServerFormProps) {
   const { t } = useTranslation();
-  const [name, setName] = useState("");
-  const [command, setCommand] = useState("");
-  const [argsRaw, setArgsRaw] = useState("");
-  const [envRaw, setEnvRaw] = useState("");
+  const [name, setName] = useState(initial?.name ?? "");
+  const [command, setCommand] = useState(initial?.command ?? "");
+  const [argsRaw, setArgsRaw] = useState((initial?.args ?? []).join(","));
+  const [envRaw, setEnvRaw] = useState(initial?.env ? envMapToRaw(initial.env) : "");
   const [submitting, setSubmitting] = useState(false);
 
   // [START] parse env — KEY=VALUE per line → Record<string, string>
@@ -414,8 +428,9 @@ export function McpServersSection() {
   }
   // [END]
 
-  // [START] add-form visibility
+  // [START] add-form visibility + optional prefill for preset-driven adds
   const [showAddForm, setShowAddForm] = useState(false);
+  const [formInitial, setFormInitial] = useState<AddServerFormInitial | undefined>(undefined);
   // [END]
 
   // [START] search panel visibility
@@ -445,33 +460,34 @@ export function McpServersSection() {
   async function handleAdd(cfg: { name: string; command: string; args: string[]; env: Record<string, string> }) {
     await addServer(cfg);
     setShowAddForm(false);
+    setFormInitial(undefined);
   }
   // [END]
 
   // [START] Quick-add preset handler — fills project_path token if needed.
-  // For presets that declare env keys with an empty-string default (e.g. API
-  // keys), prompt the user for each missing value before adding. Cancelling
-  // any prompt aborts the add. Follow-up (Phase 6.4): replace prompt() with
-  // an inline env editor so the same flow also covers post-add edits.
+  // If the preset declares env keys with empty-string defaults (API keys),
+  // open the inline AddServerForm pre-filled with the preset values so the
+  // user can type the key right into the env textarea and submit. Avoids
+  // window.prompt() which is blocked in the Tauri webview.
   const project_path = useProjectContextStore((s) => s.project_path);
   async function handleAddPreset(preset: McpPreset) {
-    if (preset.requires?.includes("project_path") && !project_path) {
-      // No project path set — still add, using empty string; user can edit later.
-    }
     const args = expandArgs(preset.args_template, { project_path });
-    const env: Record<string, string> = { ...preset.env };
-    for (const [key, value] of Object.entries(env)) {
-      if (value === "") {
-        const input = window.prompt(`${preset.name} — ${key}`);
-        if (input === null) return; // user cancelled
-        env[key] = input;
-      }
+    const needsUserInput = Object.values(preset.env).some((v) => v === "");
+    if (needsUserInput) {
+      setFormInitial({
+        name: preset.name,
+        command: preset.command,
+        args,
+        env: preset.env,
+      });
+      setShowAddForm(true);
+      return;
     }
     await addServer({
       name: preset.name,
       command: preset.command,
       args,
-      env,
+      env: preset.env,
     });
   }
   // [END]
@@ -645,11 +661,18 @@ export function McpServersSection() {
           {showAddForm ? (
             <AddServerForm
               onAdd={handleAdd}
-              onCancel={() => setShowAddForm(false)}
+              onCancel={() => {
+                setShowAddForm(false);
+                setFormInitial(undefined);
+              }}
+              initial={formInitial}
             />
           ) : (
             <button
-              onClick={() => setShowAddForm(true)}
+              onClick={() => {
+                setFormInitial(undefined);
+                setShowAddForm(true);
+              }}
               className="self-start mt-1 text-xs px-3 py-1.5 rounded bg-ovo-border text-ovo-text hover:bg-ovo-accent hover:text-white transition"
             >
               {t("settings.mcp.add_server")}
