@@ -20,6 +20,12 @@ import { useModelPerfStore } from "./model_perf";
 // [START] Phase A — attachment persistence helpers
 import { saveAttachment, readAttachmentAsDataUrl } from "../lib/attachmentStorage";
 // [END]
+// [START] Phase 6.2c — MCP tool-use integration
+import { useMcpStore } from "./mcp";
+import { mcpCall } from "../lib/mcp";
+import { parseToolUseBlock, buildToolsSystemMessage } from "../lib/toolUse";
+import { useToastsStore } from "./toasts";
+// [END]
 
 // [START] Attachment → OpenAI content-parts conversion.
 // stored kind: read bytes from disk via readAttachmentAsDataUrl and inline.
@@ -159,12 +165,27 @@ function currentModelForSend(): string | null {
 }
 
 export const useChatStore = create<ChatStoreState>((set, get) => {
+  // [START] Phase 6.2c — resolve server_id for a tool name
+  function resolveServerId(toolName: string): string | null {
+    const { status } = useMcpStore.getState();
+    for (const srv of Object.values(status)) {
+      if (srv.running && srv.tools.some((t) => t.name === toolName)) {
+        return srv.server_id;
+      }
+    }
+    return null;
+  }
+  // [END]
+
   // [START] _sendOne — actual single-turn execution; sendMessage wraps this
   // with mode-aware dispatch logic.
-  async function _sendOne(content: string, attachments?: ChatAttachment[]): Promise<void> {
+  // toolLoopDepth: recursion counter for tool-call chaining; capped at 5.
+  // When toolLoopDepth > 0 the caller is a tool-result continuation — skip the
+  // empty-content early-return guard so the model can see the appended tool_result.
+  async function _sendOne(content: string, attachments?: ChatAttachment[], toolLoopDepth = 0): Promise<void> {
     const trimmed = content.trim();
     const hasAttachments = (attachments?.length ?? 0) > 0;
-    if (!trimmed && !hasAttachments) return;
+    if (!trimmed && !hasAttachments && toolLoopDepth === 0) return;
 
     const sessions = useSessionsStore.getState();
     let sessionId = sessions.currentSessionId;
@@ -283,6 +304,22 @@ export const useChatStore = create<ChatStoreState>((set, get) => {
       }
       // [END]
 
+      // [START] Phase 6.2c — inject MCP tool descriptions as transient system message.
+      // Prepended before any project-context system block, concatenated with \n\n---\n\n.
+      const allTools = useMcpStore.getState().getAllTools();
+      if (allTools.length > 0) {
+        const toolsPrompt = buildToolsSystemMessage(allTools);
+        if (wire.length > 0 && wire[0].role === "system") {
+          wire[0] = {
+            role: "system",
+            content: `${toolsPrompt}\n\n---\n\n${wire[0].content as string}`,
+          };
+        } else {
+          wire.unshift({ role: "system", content: toolsPrompt });
+        }
+      }
+      // [END]
+
       let finalUsage: {
         prompt_tokens: number;
         completion_tokens: number;
@@ -296,6 +333,10 @@ export const useChatStore = create<ChatStoreState>((set, get) => {
       const ttftStart = performance.now();
       let firstTokenAt: number | null = null;
       let deltaCount = 0;
+      // [END]
+
+      // [START] Phase 6.2c — tool-use detection state
+      let toolCallDetected: Awaited<ReturnType<typeof parseToolUseBlock>> = null;
       // [END]
 
       for await (const frame of streamChat(
@@ -318,8 +359,97 @@ export const useChatStore = create<ChatStoreState>((set, get) => {
         accumulated += frame.delta;
         deltaCount += 1;
         scheduleFlush();
+
+        // [START] Phase 6.2c — check for complete tool_use block after each delta
+        const parsed = parseToolUseBlock(accumulated);
+        if (parsed !== null) {
+          toolCallDetected = parsed;
+          abortController.abort();
+          break;
+        }
+        // [END]
       }
       flushNow();
+
+      // [START] Phase 6.2c — handle tool call if detected
+      if (toolCallDetected !== null) {
+        const call = toolCallDetected;
+
+        // Strip the raw <tool_use>…</tool_use> block from the visible assistant text
+        const visibleText = accumulated.replace(call.raw, "").trim();
+        // Persist assistant message without the tool_use block
+        await updateMessageContent(assistant.id, visibleText);
+
+        // Recursion guard
+        if (toolLoopDepth >= 5) {
+          useToastsStore.getState().push({
+            kind: "error",
+            message: "Tool loop broken (max 5 iterations)",
+          });
+          set({ streaming: false, owlState: "idle", abortController: null });
+          drainQueue();
+          return;
+        }
+
+        // Resolve server_id
+        const serverId = resolveServerId(call.name);
+        let resultJson: string;
+        // [START] Tool-approval mode — plan / ask / bypass (default bypass)
+        const { useToolModeStore } = await import("./tool_mode");
+        const mode = useToolModeStore.getState().mode;
+        if (mode === "plan") {
+          // Don't run; give the model a synthetic "plan-only" result so it
+          // keeps reasoning as if the tool had returned a success stub.
+          resultJson = JSON.stringify({
+            plan_only: true,
+            note: `Tool '${call.name}' was not executed (plan mode).`,
+          });
+        } else if (serverId === null) {
+          resultJson = JSON.stringify({ error: `Tool not found: ${call.name}` });
+        } else if (mode === "ask") {
+          // Minimal approval UX — confirm dialog. The Claude-parity richer UI
+          // (approve / deny / always allow card in the chat stream) lands
+          // in a follow-up.
+          const approved = window.confirm(
+            `🔧 ${call.name}\n\n${JSON.stringify(call.arguments, null, 2)}\n\n도구 실행을 허용할까?`,
+          );
+          if (!approved) {
+            resultJson = JSON.stringify({ error: "User denied tool call." });
+          } else {
+            try {
+              const result = await mcpCall(serverId, call.name, call.arguments);
+              resultJson = JSON.stringify(result);
+            } catch (e) {
+              const errMsg = e instanceof Error ? e.message : String(e);
+              resultJson = JSON.stringify({ error: errMsg });
+            }
+          }
+        } else {
+          // bypass — execute immediately
+          try {
+            const result = await mcpCall(serverId, call.name, call.arguments);
+            resultJson = JSON.stringify(result);
+          } catch (e) {
+            const errMsg = e instanceof Error ? e.message : String(e);
+            resultJson = JSON.stringify({ error: errMsg });
+          }
+        }
+        // [END]
+
+        // Append tool_result as a user-role message (transient — no content to show except for context)
+        await useSessionsStore.getState().appendMessage({
+          session_id: sessionId,
+          role: "user",
+          content: `<tool_result>${resultJson}</tool_result>`,
+          attachments: null,
+        });
+
+        // Recurse — model sees the result and continues
+        set({ streaming: false, owlState: "idle", abortController: null });
+        await _sendOne("", undefined, toolLoopDepth + 1);
+        return;
+      }
+      // [END]
 
       // [START] Persist final content + usage to SQLite + session totals.
       await updateMessageContent(assistant.id, accumulated, {

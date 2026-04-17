@@ -10,6 +10,12 @@ import { usePetStore } from "../store/pet";
 // [START] Phase 6.1 — Project Context section
 import { ProjectContextSection } from "../components/ProjectContextSection";
 // [END]
+// [START] Phase 6.2b — MCP Servers section
+import { McpServersSection } from "../components/McpServersSection";
+// [END]
+// [START] Phase 6.2c — tool-call approval mode store
+import { useToolModeStore, type ToolMode } from "../store/tool_mode";
+// [END]
 import { useToastsStore } from "../store/toasts";
 import { listModels } from "../lib/api";
 import type { CompactStrategy, ModelContextOverride, OvoModel } from "../types/ovo";
@@ -427,6 +433,54 @@ function AdvancedSection({ ports, models }: AdvancedSectionProps) {
 }
 // [END]
 
+// [START] ToolModeSection — plan / ask / bypass tool-call approval mode.
+// Mirrors Claude Code's defaultMode concept; bypass is the fastest default,
+// ask surfaces a confirm() dialog per call, plan skips execution entirely.
+const TOOL_MODES: ToolMode[] = ["bypass", "ask", "plan"];
+
+function toolModeLabelKey(m: ToolMode): string {
+  return `settings.tool_mode.mode_${m}_label`;
+}
+
+function toolModeHelpKey(m: ToolMode): string {
+  return `settings.tool_mode.mode_${m}_help`;
+}
+
+function ToolModeSection() {
+  const { t } = useTranslation();
+  const mode = useToolModeStore((s) => s.mode);
+  const setMode = useToolModeStore((s) => s.setMode);
+  return (
+    <section className="py-4 border-b border-ovo-border">
+      <h3 className="text-sm font-semibold text-ovo-text mb-2">
+        {t("settings.tool_mode.section_title")}
+      </h3>
+      <p className="text-xs text-ovo-muted mb-3">
+        {t("settings.tool_mode.description")}
+      </p>
+      <div className="flex flex-col gap-2">
+        {TOOL_MODES.map((m) => (
+          <label key={m} className="flex flex-col gap-0.5 cursor-pointer">
+            <div className="flex items-center gap-2">
+              <input
+                type="radio"
+                name="tool_mode"
+                value={m}
+                checked={mode === m}
+                onChange={() => setMode(m)}
+                className="accent-ovo-accent"
+              />
+              <span className="text-sm text-ovo-text">{t(toolModeLabelKey(m))}</span>
+            </div>
+            <p className="ml-5 text-xs text-ovo-muted">{t(toolModeHelpKey(m))}</p>
+          </label>
+        ))}
+      </div>
+    </section>
+  );
+}
+// [END]
+
 // [START] ThemeSection — 3-button theme selector (system / light / dark)
 const THEME_MODES: ThemeMode[] = ["system", "light", "dark"];
 
@@ -579,6 +633,14 @@ export function SettingsPane() {
 
       {/* [START] Phase 6.1 — Project Context section */}
       <ProjectContextSection />
+      {/* [END] */}
+
+      {/* [START] Phase 6.2b — MCP Servers section */}
+      <McpServersSection />
+      {/* [END] */}
+
+      {/* [START] Phase 6.2c — tool-call approval mode */}
+      <ToolModeSection />
       {/* [END] */}
 
       {/* [START] Context management section (R.6) */}

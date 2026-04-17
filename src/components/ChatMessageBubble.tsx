@@ -3,6 +3,9 @@ import { useTranslation } from "react-i18next";
 import { ChevronDown } from "lucide-react";
 import type { Message } from "../types/ovo";
 import { AttachmentChip } from "./AttachmentChip";
+// [START] Phase 6.2c — tool-use segment parsing helpers
+import { parseToolUseBlock } from "../lib/toolUse";
+// [END]
 
 interface Props {
   message: Message;
@@ -18,7 +21,11 @@ interface Props {
 // visible in the bubble for gpt-oss / harmony-formatted models).
 type Segment =
   | { type: "text"; content: string }
-  | { type: "think"; content: string; open: boolean };
+  | { type: "think"; content: string; open: boolean }
+  // [START] Phase 6.2c — tool-use segment types
+  | { type: "tool_use"; name: string; argsJson: string }
+  | { type: "tool_result"; content: string };
+  // [END]
 
 const OPEN_TAG = "<think>";
 const CLOSE_TAG = "</think>";
@@ -103,6 +110,13 @@ function skipLeadingWs(s: string, from: number): number {
   return j;
 }
 
+// [START] Phase 6.2c — tool_result tag constants
+const TOOL_USE_OPEN = "<tool_use>";
+const TOOL_USE_CLOSE = "</tool_use>";
+const TOOL_RESULT_OPEN = "<tool_result>";
+const TOOL_RESULT_CLOSE = "</tool_result>";
+// [END]
+
 function parseSegments(raw: string): Segment[] {
   const content = normalizeReasoning(raw);
   const out: Segment[] = [];
@@ -119,22 +133,132 @@ function parseSegments(raw: string): Segment[] {
   }
 
   while (i < content.length) {
-    const openIdx = content.indexOf(OPEN_TAG, i);
-    if (openIdx === -1) {
+    // [START] Phase 6.2c — find the nearest special tag among think/tool_use/tool_result
+    const nextThink = content.indexOf(OPEN_TAG, i);
+    const nextToolUse = content.indexOf(TOOL_USE_OPEN, i);
+    const nextToolResult = content.indexOf(TOOL_RESULT_OPEN, i);
+
+    // Pick the earliest tag; -1 means absent (treat as Infinity for comparison)
+    const candidates: Array<[number, string]> = [
+      [nextThink === -1 ? Infinity : nextThink, "think"],
+      [nextToolUse === -1 ? Infinity : nextToolUse, "tool_use"],
+      [nextToolResult === -1 ? Infinity : nextToolResult, "tool_result"],
+    ];
+    candidates.sort((a, b) => a[0] - b[0]);
+    const [nearestIdx, nearestKind] = candidates[0];
+
+    if (nearestIdx === Infinity) {
+      // No more special tags — rest is plain text
       out.push({ type: "text", content: content.slice(i) });
       break;
     }
-    if (openIdx > i) out.push({ type: "text", content: content.slice(i, openIdx) });
-    const afterOpen = openIdx + OPEN_TAG.length;
-    const closeIdx = content.indexOf(CLOSE_TAG, afterOpen);
-    if (closeIdx === -1) {
-      out.push({ type: "think", content: content.slice(afterOpen), open: true });
-      return out.filter((s) => !(s.type === "text" && s.content.length === 0));
+
+    // Emit any plain text before the tag
+    if (nearestIdx > i) {
+      out.push({ type: "text", content: content.slice(i, nearestIdx) });
     }
-    out.push({ type: "think", content: content.slice(afterOpen, closeIdx), open: false });
-    i = skipLeadingWs(content, closeIdx + CLOSE_TAG.length);
+
+    if (nearestKind === "think") {
+      const afterOpen = nearestIdx + OPEN_TAG.length;
+      const closeIdx = content.indexOf(CLOSE_TAG, afterOpen);
+      if (closeIdx === -1) {
+        out.push({ type: "think", content: content.slice(afterOpen), open: true });
+        return out.filter((s) => !(s.type === "text" && s.content.length === 0));
+      }
+      out.push({ type: "think", content: content.slice(afterOpen, closeIdx), open: false });
+      i = skipLeadingWs(content, closeIdx + CLOSE_TAG.length);
+    } else if (nearestKind === "tool_use") {
+      // [START] Phase 6.2c — parse tool_use segment
+      const afterOpen = nearestIdx + TOOL_USE_OPEN.length;
+      const closeIdx = content.indexOf(TOOL_USE_CLOSE, afterOpen);
+      if (closeIdx === -1) {
+        // Incomplete block during streaming — treat remainder as text
+        out.push({ type: "text", content: content.slice(nearestIdx) });
+        break;
+      }
+      const parsed = parseToolUseBlock(content.slice(nearestIdx));
+      if (parsed !== null) {
+        out.push({
+          type: "tool_use",
+          name: parsed.name,
+          argsJson: JSON.stringify(parsed.arguments, null, 2),
+        });
+      } else {
+        // Fallback: emit as text if JSON parsing failed
+        out.push({ type: "text", content: content.slice(nearestIdx, closeIdx + TOOL_USE_CLOSE.length) });
+      }
+      i = skipLeadingWs(content, closeIdx + TOOL_USE_CLOSE.length);
+      // [END]
+    } else {
+      // tool_result
+      // [START] Phase 6.2c — parse tool_result segment
+      const afterOpen = nearestIdx + TOOL_RESULT_OPEN.length;
+      const closeIdx = content.indexOf(TOOL_RESULT_CLOSE, afterOpen);
+      if (closeIdx === -1) {
+        out.push({ type: "text", content: content.slice(nearestIdx) });
+        break;
+      }
+      out.push({ type: "tool_result", content: content.slice(afterOpen, closeIdx).trim() });
+      i = skipLeadingWs(content, closeIdx + TOOL_RESULT_CLOSE.length);
+      // [END]
+    }
+    // [END] Phase 6.2c nearest-tag dispatch
   }
   return out.filter((s) => !(s.type === "text" && s.content.length === 0));
+}
+// [END]
+
+// [START] Phase 6.2c — ToolUseBlock: collapsible card for assistant tool calls
+function ToolUseBlock({ name, argsJson }: { name: string; argsJson: string }) {
+  const { t } = useTranslation();
+  const [expanded, setExpanded] = useState(false);
+  return (
+    <div className="mt-1 mb-3 rounded-lg border border-ovo-chip-border bg-ovo-chip px-3 py-2 text-xs">
+      <button
+        type="button"
+        onClick={() => setExpanded((v) => !v)}
+        className="flex w-full items-center gap-1 text-left text-ovo-muted hover:text-ovo-text transition-colors"
+      >
+        <ChevronDown
+          className={`w-3 h-3 shrink-0 transition-transform ${expanded ? "" : "-rotate-90"}`}
+          aria-hidden
+        />
+        <span className="font-medium">{t("chat.tool_use.call_label", { name })}</span>
+      </button>
+      {expanded && (
+        <pre className="mt-2 overflow-x-auto whitespace-pre-wrap break-all text-ovo-muted/90 leading-relaxed">
+          {argsJson}
+        </pre>
+      )}
+    </div>
+  );
+}
+// [END]
+
+// [START] Phase 6.2c — ToolResultBlock: collapsible card for tool results (user messages)
+function ToolResultBlock({ content }: { content: string }) {
+  const { t } = useTranslation();
+  const [expanded, setExpanded] = useState(false);
+  return (
+    <div className="mt-1 mb-1 rounded-lg border border-ovo-chip-border bg-ovo-chip px-3 py-2 text-xs">
+      <button
+        type="button"
+        onClick={() => setExpanded((v) => !v)}
+        className="flex w-full items-center gap-1 text-left text-ovo-muted hover:text-ovo-text transition-colors"
+      >
+        <ChevronDown
+          className={`w-3 h-3 shrink-0 transition-transform ${expanded ? "" : "-rotate-90"}`}
+          aria-hidden
+        />
+        <span className="font-medium">{t("chat.tool_use.result_label")}</span>
+      </button>
+      {expanded && (
+        <pre className="mt-2 overflow-x-auto whitespace-pre-wrap break-all text-ovo-muted/90 leading-relaxed">
+          {content}
+        </pre>
+      )}
+    </div>
+  );
 }
 // [END]
 
@@ -212,6 +336,20 @@ function ChatMessageBubbleImpl({ message, streaming }: Props) {
 
   if (isUser) {
     const hasAttachments = (message.attachments?.length ?? 0) > 0;
+    // [START] Phase 6.2c — detect pure tool_result user messages and render as card
+    const userSegments = parseSegments(message.content);
+    const isOnlyToolResult =
+      userSegments.length === 1 && userSegments[0].type === "tool_result";
+    if (isOnlyToolResult && userSegments[0].type === "tool_result") {
+      return (
+        <div className="flex justify-end">
+          <div className="max-w-[78%]">
+            <ToolResultBlock content={userSegments[0].content} />
+          </div>
+        </div>
+      );
+    }
+    // [END]
     return (
       <div className="flex flex-col items-end gap-1">
         {hasAttachments && (
@@ -232,7 +370,11 @@ function ChatMessageBubbleImpl({ message, streaming }: Props) {
 
   const segments = parseSegments(message.content);
   const hasAnyContent = segments.some(
-    (s) => (s.type === "text" && s.content.length > 0) || s.type === "think",
+    (s) =>
+      (s.type === "text" && s.content.length > 0) ||
+      s.type === "think" ||
+      s.type === "tool_use" ||
+      s.type === "tool_result",
   );
   const showInitialDots = streaming && !hasAnyContent;
   const lastSegment = segments[segments.length - 1];
@@ -249,13 +391,20 @@ function ChatMessageBubbleImpl({ message, streaming }: Props) {
             <span className="w-1.5 h-1.5 rounded-full bg-ovo-muted animate-bounce" />
           </span>
         ) : (
-          segments.map((seg, i) =>
-            seg.type === "think" ? (
-              <ThinkBlock key={i} content={seg.content} open={seg.open} />
-            ) : (
-              <span key={i}>{seg.content}</span>
-            ),
-          )
+          // [START] Phase 6.2c — render tool_use and tool_result segments alongside think/text
+          segments.map((seg, i) => {
+            if (seg.type === "think") {
+              return <ThinkBlock key={i} content={seg.content} open={seg.open} />;
+            }
+            if (seg.type === "tool_use") {
+              return <ToolUseBlock key={i} name={seg.name} argsJson={seg.argsJson} />;
+            }
+            if (seg.type === "tool_result") {
+              return <ToolResultBlock key={i} content={seg.content} />;
+            }
+            return <span key={i}>{seg.content}</span>;
+          })
+          // [END]
         )}
         {showCaret && (
           <span

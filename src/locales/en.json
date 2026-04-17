@@ -5,9 +5,14 @@
   },
   "nav": {
     "chat": "Chat",
+    "code": "Code",
     "models": "Models",
     "settings": "Settings",
     "about": "About"
+  },
+  "code": {
+    "title": "Code",
+    "coming_soon": "IDE mode — CLAUDE.md / AGENTS.md driven coding workspace lands here in Phase 6"
   },
   "sidecar": {
     "status": {
@@ -45,7 +50,19 @@
     "url_placeholder": "https://...",
     "remove_attachment": "Remove attachment",
     "attach_unsupported": "This model is text-only",
-    "queue_badge": "{{count}} queued"
+    "queue_badge": "{{count}} queued",
+    "tool_use": {
+      "call_label": "🔧 Tool call: {{name}}",
+      "result_label": "🔧 Tool result",
+      "loop_limit": "Tool loop broken (max 5 iterations)",
+      "tool_error": "Tool execution failed: {{error}}"
+    },
+    "drop": {
+      "accept": "Drop to attach",
+      "accept_hint": "Images and audio files supported",
+      "reject": "This model doesn't support attachments",
+      "reject_hint": "Switch to a vision or audio-capable model"
+    }
   },
   "models": {
     "title": "Installed models",
@@ -141,9 +158,10 @@
       "not_found": "(not found)",
       "total_size": "Total {{size}} chars · ~{{tokens}} tokens",
       "no_folder": "No folder selected",
-      "custom_title": "Custom MD files",
-      "custom_empty": "No custom files",
-      "custom_add": "+ Add file",
+      "custom_title": "Custom MD folders",
+      "custom_hint": "Adding a folder loads every MD file inside it.",
+      "custom_empty": "No folders added",
+      "custom_add": "+ Add folder",
       "custom_remove": "Remove",
       "custom_filter_label": "Markdown"
     },
@@ -163,6 +181,42 @@
       "overrides_add": "+ Add model override",
       "overrides_auto_detected": "Auto-detected",
       "overrides_confirm_delete": "Delete this override?"
+    },
+    "tool_mode": {
+      "section_title": "Tool approval mode",
+      "description": "How to handle MCP tool calls the model emits",
+      "mode_bypass_label": "Auto-approve (default, fast)",
+      "mode_bypass_help": "Execute tools immediately without prompting — matches Claude's bypassPermissions",
+      "mode_ask_label": "Ask before each call",
+      "mode_ask_help": "Surface a confirm dialog every call — safer, slower",
+      "mode_plan_label": "Plan only (no execution)",
+      "mode_plan_help": "Never run tools; feed the model a synthetic 'pretend-success' result so it continues reasoning — useful for dry runs"
+    },
+    "mcp": {
+      "section_title": "MCP Servers",
+      "description": "Tool extensions — connect external tools (filesystem, GitHub, Slack, …) via the MCP protocol",
+      "presets_hint": "Quick add (click to auto-install + start):",
+      "add_server": "+ Add server",
+      "name_label": "Name",
+      "command_label": "Command",
+      "args_label": "Arguments (comma-separated)",
+      "env_label": "Environment (KEY=VALUE per line)",
+      "save": "Add",
+      "cancel": "Cancel",
+      "start": "Start",
+      "stop": "Stop",
+      "remove": "Remove",
+      "confirm_remove": "Remove this server?",
+      "tool_count": "{{count}} tools",
+      "empty": "No MCP servers configured",
+      "example_hint": "Example: command=npx, args=@modelcontextprotocol/server-filesystem,/path/to/folder",
+      "search_btn": "Search MCP",
+      "search_placeholder": "Search npm for MCP servers… (try mcp-server, modelcontextprotocol)",
+      "search_tip": "'mcp-server' keyword usually catches official + community servers",
+      "search_empty": "No results",
+      "search_error": "Network error — retry",
+      "install_btn": "Install",
+      "install_started": "Installing {{name}}"
     }
   },
   "pet": {
@@ -197,6 +251,12 @@
     "close": "Close",
     "save": "Save",
     "cancel": "Cancel"
+  },
+  "mcp": {
+    "server_running": "Running",
+    "server_stopped": "Stopped",
+    "server_error": "Error: {{error}}",
+    "spawn_failed": "Server start failed"
   },
   "compact": {
     "in_progress": "Compacting…",
