@@ -290,4 +290,28 @@ async def summarize(req: SummarizeRequest) -> dict[str, Any]:
             "total_tokens": prompt_tokens + gen_tokens,
         },
     }
+
+
+# [START] Explicit unload — lets the UI drop a loaded model immediately when
+# the user swaps in the selector (otherwise unload is lazy and only happens
+# when the next request arrives for a different model_ref).
+@router.post("/unload")
+async def unload_loaded_models() -> dict[str, Any]:
+    """Unload every runner's currently-loaded model + clear Metal cache.
+
+    Returns which runner(s) held a model so the caller can log what was
+    freed. Never raises — best-effort cleanup.
+    """
+    from ovo_sidecar import model_lifecycle
+
+    freed: list[str] = []
+    if runner._loaded is not None:
+        freed.append(f"text:{runner._loaded.ref}")
+    if vlm_runner._loaded is not None:
+        freed.append(f"vlm:{vlm_runner._loaded.ref}")
+
+    # Signal every registered unloader (text + VLM + future runners).
+    model_lifecycle.unload_others(skip=None)
+    model_lifecycle.release_gpu_memory()
+    return {"freed": freed}
 # [END]

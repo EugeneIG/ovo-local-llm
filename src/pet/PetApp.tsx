@@ -70,15 +70,52 @@ function savePosition(x: number, y: number): void {
   }
 }
 
+// [START] Ambient mood cycle configuration
+const AMBIENT_MOODS: ReadonlyArray<OwlState> = ["idle", "happy", "surprised"];
+const AMBIENT_CYCLE_MS = 4500;          // rotate mood every 4.5s
+const SLEEP_AFTER_IDLE_MS = 5 * 60_000; // 5 min of inactivity → sleeping
+// [END]
+
 export function PetApp() {
-  const [owlState, setOwlState] = useState<OwlState>("idle");
+  // [START] Layered pet mood:
+  //   pressState   — "struggling" while mouse/pointer is held down
+  //   chatState    — last chat-driven event (thinking, typing, happy, error…)
+  //   ambientState — local rotation idle / happy / surprised, or sleeping
+  // Precedence: press > chat (if recent) > ambient.
+  const [pressState, setPressState] = useState<OwlState | null>(null);
+  const [chatState, setChatState] = useState<OwlState | null>(null);
+  const [ambientState, setAmbientState] = useState<OwlState>("idle");
+  const [lastActivity, setLastActivity] = useState<number>(() => Date.now());
   const [size, setSize] = useState<number>(() => readSavedSize());
+
+  const owlState: OwlState = pressState ?? chatState ?? ambientState;
+  // [END]
 
   // [START] Apply size to the window whenever `size` state changes.
   useEffect(() => {
     void getCurrentWindow().setSize(new LogicalSize(size, size));
     saveSize(size);
   }, [size]);
+  // [END]
+
+  // [START] Ambient mood cycle — rotate through idle / happy / surprised
+  // every AMBIENT_CYCLE_MS. Falls asleep after SLEEP_AFTER_IDLE_MS of no
+  // interaction. Resets on any user activity (pointer, drag, double-click).
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const idleFor = Date.now() - lastActivity;
+      if (idleFor >= SLEEP_AFTER_IDLE_MS) {
+        setAmbientState("sleeping");
+        return;
+      }
+      setAmbientState((prev) => {
+        const pool = AMBIENT_MOODS.filter((m) => m !== prev);
+        const next = pool[Math.floor(Math.random() * pool.length)];
+        return next ?? "idle";
+      });
+    }, AMBIENT_CYCLE_MS);
+    return () => clearInterval(interval);
+  }, [lastActivity]);
   // [END]
 
   // [START] Context menu — native macOS popup (right-click on owl)
@@ -127,13 +164,23 @@ export function PetApp() {
       void win.setPosition(new PhysicalPosition(saved.x, saved.y));
     }
 
-    // Subscribe to owl state from main window
+    // [START] Chat-driven state — auto-expire after 6s so the pet falls back
+    // to its ambient cycle when chat activity quiets down. "idle" events are
+    // treated as clears (chat returning to baseline).
+    let chatClearTimer: ReturnType<typeof setTimeout> | null = null;
     let unlisten: (() => void) | undefined;
     void listen<{ state: OwlState }>("owl:state", (e) => {
-      setOwlState(e.payload.state);
+      if (chatClearTimer) clearTimeout(chatClearTimer);
+      if (e.payload.state === "idle") {
+        setChatState(null);
+      } else {
+        setChatState(e.payload.state);
+        chatClearTimer = setTimeout(() => setChatState(null), 6000);
+      }
     }).then((fn) => {
       unlisten = fn;
     });
+    // [END]
 
     // Subscribe to Tauri move events to persist position
     let unlistenMoved: (() => void) | undefined;
@@ -172,6 +219,15 @@ export function PetApp() {
       data-tauri-drag-region
       onDoubleClick={() => void handleDoubleClick()}
       onContextMenu={(e) => void handleContextMenu(e)}
+      onPointerDown={() => {
+        // [START] struggling while held — releases on pointerup / leave
+        setPressState("struggling");
+        setLastActivity(Date.now());
+        // [END]
+      }}
+      onPointerUp={() => setPressState(null)}
+      onPointerLeave={() => setPressState(null)}
+      onPointerMove={() => setLastActivity(Date.now())}
       style={{
         width: "100vw",
         height: "100vh",
