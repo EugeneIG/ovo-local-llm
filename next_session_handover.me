@@ -39,7 +39,7 @@
 ### 주요 완료
 
 - **Phase 6.1** — 프로젝트 컨텍스트 로더(CLAUDE.md / AGENTS.md / GEMINI.md) + 커스텀 MD 폴더
-- **Phase 6.2** — MCP (stdio JSON-RPC 2.0 풀, 프리셋 5개: filesystem / memory / sequential-thinking / context7 / **brave-search**, npm 검색 설치, tool_use 탐지 + 재귀 실행 ≤5, bypass/ask/plan 모드)
+- **Phase 6.2** — MCP (stdio JSON-RPC 2.0 풀, 프리셋 5개: filesystem / memory / sequential-thinking / context7 / **brave-search**, npm 검색 설치, tool_use 탐지 + 재귀 실행 ≤5, bypass/ask/plan 모드) + **내장 `web_search` 툴** (DuckDuckGo, 키 불필요)
 - **Phase 6.3** — 위키 (SQLite + FTS5, CRUD UI, 채팅 자동 주입 4000자 예산)
 - **사이드카 생명주기** — 자동 시작, 2초 idle → restart 폴백, `/ovo/unload` 호출 연계
 - **펫** — 레이어드 감정(press > chat > ambient), thinking/typing 상시 유지, reasoning 블록 전환 감지
@@ -77,7 +77,7 @@
 
 ### 1순위 — Phase 6.4 Claude 페어리티
 
-- **기본 웹 검색 MCP (키 불필요)** — Brave는 키 필요. OVO 사이드카에 `duckduckgo-search` 기반 `/ovo/websearch` 엔드포인트 + tool catalog에 내장 `web_search` 툴 주입. 오빠 확정 요구.
+- ~~**기본 웹 검색 MCP (키 불필요)**~~ — ✅ 세션 #3에서 완료. `/ovo/websearch` (DuckDuckGo) + 내장 `web_search` 툴 카탈로그 주입. 사이드카 `duckduckgo-search` 의존성 첫 실행 시 uv가 설치.
 - **`/compact` 수동 트리거 UI** — auto-compact 엔진 재사용, 채팅 상단 슬래시 커맨드 바
 - **`.ovo/skills/`** — Claude `.claude/skills/` 대응, 폴더 스캔 → 시스템 프롬프트 카탈로그 주입
 - **`/memory` 명령** — Claude Code 대응 (`/memory add/list/remove`)
