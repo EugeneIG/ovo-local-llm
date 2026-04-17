@@ -434,17 +434,29 @@ export function McpServersSection() {
   // [END]
 
   // [START] Quick-add preset handler — fills project_path token if needed.
+  // For presets that declare env keys with an empty-string default (e.g. API
+  // keys), prompt the user for each missing value before adding. Cancelling
+  // any prompt aborts the add. Follow-up (Phase 6.4): replace prompt() with
+  // an inline env editor so the same flow also covers post-add edits.
   const project_path = useProjectContextStore((s) => s.project_path);
   async function handleAddPreset(preset: McpPreset) {
     if (preset.requires?.includes("project_path") && !project_path) {
       // No project path set — still add, using empty string; user can edit later.
     }
     const args = expandArgs(preset.args_template, { project_path });
+    const env: Record<string, string> = { ...preset.env };
+    for (const [key, value] of Object.entries(env)) {
+      if (value === "") {
+        const input = window.prompt(`${preset.name} — ${key}`);
+        if (input === null) return; // user cancelled
+        env[key] = input;
+      }
+    }
     await addServer({
       name: preset.name,
       command: preset.command,
       args,
-      env: preset.env,
+      env,
     });
   }
   // [END]

@@ -58,6 +58,14 @@ export const MCP_PRESETS: ReadonlyArray<McpPreset> = [
     args_template: ["-y", "@upstash/context7-mcp@latest"],
     env: {},
   },
+  {
+    id: "brave-search",
+    name: "🔍 Brave 검색",
+    description: "웹 검색 (Anthropic 공식, BRAVE_API_KEY 필요)",
+    command: "npx",
+    args_template: ["-y", "@modelcontextprotocol/server-brave-search"],
+    env: { BRAVE_API_KEY: "" },
+  },
 ];
 
 export function expandArgs(
