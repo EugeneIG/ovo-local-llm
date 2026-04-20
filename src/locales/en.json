@@ -910,6 +910,15 @@
       "compact_failed": "Compact failed: {{reason}}",
       "memory_added": "📝 Saved to Wiki — {{title}}"
     },
+    "mcp_presets": {
+      "filesystem_name": "Filesystem",
+      "filesystem_desc": "Project folder read/write (Anthropic official)",
+      "sequential_desc": "Complex reasoning step decomposition tool",
+      "context7_desc": "Latest library docs lookup (Upstash)",
+      "playwright_desc": "Open pages, click, fill forms, screenshots via real browser (no keys needed)",
+      "brave_name": "Brave Search",
+      "brave_desc": "Web search (Anthropic official, BRAVE_API_KEY required)"
+    },
     "wiki_capture": {
       "session_prefix": "Session",
       "auto_summary": "Auto-captured session summary — archive or delete if not needed.",

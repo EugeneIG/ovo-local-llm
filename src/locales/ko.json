@@ -910,6 +910,15 @@
       "compact_failed": "축약 실패: {{reason}}",
       "memory_added": "📝 위키에 추가됨 — {{title}}"
     },
+    "mcp_presets": {
+      "filesystem_name": "파일시스템",
+      "filesystem_desc": "프로젝트 폴더 읽기/쓰기 (Anthropic 공식)",
+      "sequential_desc": "복잡한 사고 단계 분해 도구",
+      "context7_desc": "최신 라이브러리 문서 조회 (Upstash)",
+      "playwright_desc": "실제 브라우저로 페이지 열기·클릭·폼 입력·스크린샷 (키 불필요)",
+      "brave_name": "Brave 검색",
+      "brave_desc": "웹 검색 (Anthropic 공식, BRAVE_API_KEY 필요)"
+    },
     "wiki_capture": {
       "session_prefix": "세션",
       "auto_summary": "자동 캡처된 세션 요약 — 필요 없으면 아카이브하거나 삭제해도 돼.",

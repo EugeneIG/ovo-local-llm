@@ -140,8 +140,10 @@ recent macOS), prefix with `sudo`.
 ### System requirements
 
 - macOS **13+** on Apple Silicon (M1 / M2 / M3 / M4). Intel Macs are not supported.
-- **16 GB RAM** minimum (7B models); **32 GB+** recommended for 14B and above.
+- **16 GB RAM** minimum (7B Q4 models only); **32 GB+** recommended for 14B and above.
 - **10 GB** free disk for runtime + a couple of models.
+
+> **16 GB users:** Only 7B quantized (Q4) models run comfortably. Disable extra features in **Settings → Feature Flags** (Wiki, Skills, MCP) to keep the system prompt lean and maximize response speed. The **Hardware Fit** tab shows which models actually fit your machine.
 
 ## 🚀 Quick start
 
