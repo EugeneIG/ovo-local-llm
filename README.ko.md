@@ -13,11 +13,11 @@
   <img src="https://img.shields.io/badge/Apple%20Silicon-M1%20%E2%86%92%20M4-orange" alt="Apple Silicon">
 </p>
 
-<h3 align="center">🦉 All the LLMs. On device.</h3>
+<h3 align="center">🦉 Apple Silicon 전용 로컬 Claude Code</h3>
 
 <p align="center">
-  Apple Silicon에서 모든 오픈 LLM을 로컬로 — MLX · Transformers · VLM · Diffusion.<br>
-  코딩 상태에 반응하는 SVG 부엉이 마스코트 포함.
+  AI 코딩 에이전트 + 채팅 + 이미지 생성, 클라우드 제로.<br>
+  모든 오픈 LLM을 로컬로 — MLX · Transformers · VLM · Diffusion — Ollama/OpenAI API 호환.
 </p>
 
 <p align="center">

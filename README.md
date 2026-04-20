@@ -13,11 +13,11 @@
   <img src="https://img.shields.io/badge/Apple%20Silicon-M1%20%E2%86%92%20M4-orange" alt="Apple Silicon">
 </p>
 
-<h3 align="center">🦉 All the LLMs. On device.</h3>
+<h3 align="center">🦉 Local Claude Code for Apple Silicon</h3>
 
 <p align="center">
-  Run every open LLM locally on Apple Silicon — MLX, Transformers, VLM, and more.<br>
-  Ships with a reactive SVG owl mascot that mirrors your coding state.
+  AI coding agent + chat + image gen, zero cloud.<br>
+  Run every open LLM locally — MLX, Transformers, VLM, Diffusion — with Ollama/OpenAI API compatibility.
 </p>
 
 <p align="center">
@@ -180,7 +180,7 @@ npm run tauri dev
 
 Release build: `npm run tauri build` — produces `.app` + `.dmg` under your Cargo target dir.
 
-Deeper docs: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) · [docs/release/BUILD.md](docs/release/BUILD.md) · [docs/release/SECURITY.md](docs/release/SECURITY.md) · [docs/release/PRIVACY.md](docs/release/PRIVACY.md)
+Deeper docs: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) · [docs/ARCHITECTURE.en.md](docs/ARCHITECTURE.en.md) · [docs/release/BUILD.md](docs/release/BUILD.md) · [docs/release/SECURITY.md](docs/release/SECURITY.md) · [docs/release/PRIVACY.md](docs/release/PRIVACY.md)
 
 ## 🧱 Architecture
 
