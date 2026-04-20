@@ -52,6 +52,24 @@ const LS_SEEDED = "ovo:personas_seeded";
 // selector UI now hides them per request so the menu reads as plain text.
 export const BUILTIN_IDS = new Set(["default", "research", "speed", "creative"]);
 
+// [START] Phase R — i18n helper for built-in profile display.
+// Built-in templates store a Korean `name` as their canonical identifier
+// (matches the md frontmatter written to disk), but the selector dropdown
+// should render the localized label in the user's current language.
+// Pass the t() function from react-i18next.
+export function displayProfileName(
+  p: Pick<ModelProfile, "id" | "name" | "builtin">,
+  t: (key: string) => string,
+): string {
+  if (p.builtin && BUILTIN_IDS.has(p.id)) {
+    const key = `chat.profile.builtin_names.${p.id}`;
+    const localized = t(key);
+    if (localized && localized !== key) return localized;
+  }
+  return p.name;
+}
+// [END]
+
 const BUILTIN_TEMPLATES: ModelProfile[] = [
   {
     id: "default",

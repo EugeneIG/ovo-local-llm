@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ChevronDown, UserRound } from "lucide-react";
-import { useModelProfilesStore } from "../store/model_profiles";
+import { displayProfileName, useModelProfilesStore } from "../store/model_profiles";
 
 // [START] Phase 6.4 — ModelProfileSelector
 // Compact dropdown shown in the ChatPane header. Clicking opens a menu of
@@ -80,7 +80,7 @@ export function ModelProfileSelector() {
                     : "text-ovo-muted hover:bg-ovo-bg hover:text-ovo-text"
                 }`}
               >
-                <span className="flex-1 truncate">{p.name}</span>
+                <span className="flex-1 truncate">{displayProfileName(p, t)}</span>
                 {p.builtin && (
                   <span className="text-[9px] uppercase tracking-wider text-ovo-muted/70">
                     {t("chat.profile.builtin")}

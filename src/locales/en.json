@@ -412,7 +412,13 @@
     },
     "profile": {
       "label": "Model profile",
-      "builtin": "built-in"
+      "builtin": "built-in",
+      "builtin_names": {
+        "default": "Free chat",
+        "research": "Research",
+        "speed": "Speed",
+        "creative": "Creative"
+      }
     },
     "drop": {
       "accept": "Drop to attach",

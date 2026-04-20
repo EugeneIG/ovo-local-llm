@@ -4,6 +4,7 @@ import { ChevronDown, ChevronRight } from "lucide-react";
 import { CollapsibleSection } from "./CollapsibleSection";
 import {
   BUILTIN_IDS,
+  displayProfileName,
   useModelProfilesStore,
   type ModelProfile,
 } from "../store/model_profiles";
@@ -157,7 +158,7 @@ function PersonaCard({ profile, expanded, onToggle }: PersonaCardProps) {
         <span className="w-5 text-center text-base shrink-0" aria-hidden>
           {profile.emoji ?? "·"}
         </span>
-        <span className="text-sm text-ovo-text font-medium truncate">{profile.name}</span>
+        <span className="text-sm text-ovo-text font-medium truncate">{displayProfileName(profile, t)}</span>
         {isBuiltin && (
           <span className="text-[9px] uppercase tracking-wider text-ovo-muted/70 ml-auto shrink-0">
             {t("settings.personas.builtin_badge")}

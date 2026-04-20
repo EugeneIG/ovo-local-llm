@@ -412,7 +412,13 @@
     },
     "profile": {
       "label": "모델 프로필",
-      "builtin": "기본"
+      "builtin": "기본",
+      "builtin_names": {
+        "default": "자유 대화",
+        "research": "연구",
+        "speed": "속도",
+        "creative": "창작"
+      }
     },
     "drop": {
       "accept": "여기에 놓으면 첨부돼",
