@@ -12,9 +12,13 @@ import "./pet.css";
 // Mounts inside the "pet" Tauri window (visible: false by default).
 // State synced from main window via Tauri event bus ("owl:state").
 // Drag handled by Tauri OS-native startDragging().
-// Position persisted to localStorage "ovo:pet_position".
+// Position persisted via Rust `pet_save_position` / `pet_get_position`
+// (JSON under app_data_dir). We previously tried localStorage here but the
+// pet window's WebView context doesn't reliably share localStorage across
+// cold restarts on all macOS versions, so Rust-side JSON is authoritative.
+// Size still uses localStorage — the pet window is the only reader, so a
+// cold-start miss just falls back to DEFAULT_SIZE (tolerable UX).
 
-const LS_POSITION_KEY = "ovo:pet_position";
 const LS_SIZE_KEY = "ovo:pet_size";
 const DEFAULT_SIZE = 320;
 const SIZE_PRESETS: ReadonlyArray<{ label: string; value: number }> = [
@@ -23,11 +27,6 @@ const SIZE_PRESETS: ReadonlyArray<{ label: string; value: number }> = [
   { label: "크게 (320)", value: 320 },
   { label: "매우 크게 (420)", value: 420 },
 ];
-
-interface SavedPosition {
-  x: number;
-  y: number;
-}
 
 function readSavedSize(): number {
   try {
@@ -48,23 +47,22 @@ function saveSize(px: number): void {
   }
 }
 
-function readSavedPosition(): SavedPosition | null {
+async function readSavedPosition(): Promise<{ x: number; y: number } | null> {
   try {
-    const raw = localStorage.getItem(LS_POSITION_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as SavedPosition;
-    if (typeof parsed.x === "number" && typeof parsed.y === "number") {
-      return parsed;
-    }
+    // Rust returns `Option<(i32, i32)>` → `null` or `[x, y]` on the wire.
+    const tuple = await invoke<[number, number] | null>("pet_get_position");
+    if (!tuple) return null;
+    const [x, y] = tuple;
+    if (Number.isFinite(x) && Number.isFinite(y)) return { x, y };
     return null;
   } catch {
     return null;
   }
 }
 
-function savePosition(x: number, y: number): void {
+async function savePosition(x: number, y: number): Promise<void> {
   try {
-    localStorage.setItem(LS_POSITION_KEY, JSON.stringify({ x, y }));
+    await invoke("pet_save_position", { x, y });
   } catch {
     // storage unavailable — silent
   }
@@ -158,11 +156,13 @@ export function PetApp() {
   useEffect(() => {
     const win = getCurrentWindow();
 
-    // Restore position
-    const saved = readSavedPosition();
-    if (saved) {
-      void win.setPosition(new PhysicalPosition(saved.x, saved.y));
-    }
+    // Restore position via Rust-managed JSON (survives cold restarts on macOS
+    // where WebView localStorage can be lost for secondary windows).
+    void readSavedPosition().then((saved) => {
+      if (saved) {
+        void win.setPosition(new PhysicalPosition(saved.x, saved.y));
+      }
+    });
 
     // [START] Chat-driven state — "thinking" and "typing" are active
     // streaming states and must persist until the main window explicitly
@@ -188,20 +188,31 @@ export function PetApp() {
     });
     // [END]
 
-    // Subscribe to Tauri move events to persist position
+    // Subscribe to window.onMoved — Tauri 2 native window API is more
+    // reliable than the global `tauri://move` event, which can miss frames
+    // on some macOS builds. Debounce so rapid drags don't hammer Rust file
+    // writes; 250ms is below user-perceivable latency but covers full
+    // drag sessions nicely.
     let unlistenMoved: (() => void) | undefined;
-    void listen<{ x: number; y: number }>("tauri://move", (e) => {
-      savePosition(e.payload.x, e.payload.y);
-    }).then((fn) => {
-      unlistenMoved = fn;
-    });
+    let moveDebounce: ReturnType<typeof setTimeout> | null = null;
+    void win
+      .onMoved(({ payload }) => {
+        if (moveDebounce) clearTimeout(moveDebounce);
+        moveDebounce = setTimeout(() => {
+          void savePosition(payload.x, payload.y);
+        }, 250);
+      })
+      .then((fn) => {
+        unlistenMoved = fn;
+      });
 
     return () => {
       unlisten?.();
       unlistenMoved?.();
-      // Capture final position on unmount
+      if (moveDebounce) clearTimeout(moveDebounce);
+      // Capture final position on unmount — flushes the debounced write.
       void win.outerPosition().then((pos) => {
-        savePosition(pos.x, pos.y);
+        void savePosition(pos.x, pos.y);
       });
     };
   }, []);

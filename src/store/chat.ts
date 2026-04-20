@@ -16,8 +16,24 @@ import { useChatSettingsStore } from "./chat_settings";
 // [START] Phase 6.1 — project context store for transient system prompt injection
 import { useProjectContextStore } from "./project_context";
 // [END]
+// [START] Phase 6.4 — skills catalog injection
+import { useSkillsStore } from "./skills";
+// [END]
 // [START] Phase 6.3 — wiki retrieval for system prompt injection
-import { searchWikiPages } from "../db/wiki";
+// Phase 6.4 — MCP memory bridge reuses the same Wiki CRUD surface, hybrid
+// search blends FTS5 with semantic embeddings when the sidecar is up.
+import {
+  archiveWikiPage,
+  createWikiPage,
+  deleteWikiPage,
+  getBacklinks,
+  hybridSearchWikiPages,
+  lintWiki,
+  listWikiPages,
+  type WikiTier,
+} from "../db/wiki";
+import { upsertWikiEmbedding } from "../db/embeddings";
+import { embedTexts } from "../lib/embeddings";
 // [END]
 // [START] model_perf — import performance tracking store
 import { useModelPerfStore } from "./model_perf";
@@ -30,6 +46,9 @@ import { useMcpStore } from "./mcp";
 import { mcpCall } from "../lib/mcp";
 import { parseToolUseBlock, buildToolsSystemMessage, BUILTIN_TOOLS, isBuiltinTool } from "../lib/toolUse";
 import { useModelProfilesStore } from "./model_profiles";
+// [START] Phase 8 — feature flag gates
+import { useFeatureFlagsStore } from "./feature_flags";
+// [END]
 import { useToastsStore } from "./toasts";
 // [END]
 
@@ -115,6 +134,16 @@ async function messageToWire(m: Message): Promise<ChatWireMessage> {
   if (atts.length === 0) return { role, content: m.content };
   const parts: ChatContentPart[] = [];
   if (m.content) parts.push({ type: "text", text: m.content });
+
+  // [START] Phase 5 — extracted text chunks (PDF / xlsx / docx / text).
+  // Collected separately so they end up concatenated after the user's
+  // prose (models read top-down, user intent first then references).
+  const extractedBlocks: string[] = [];
+
+  const { extractAttachmentText, formatAttachedFileBlock } = await import(
+    "../lib/fileExtraction"
+  );
+
   for (const a of atts) {
     if (a.kind === "url") {
       parts.push({ type: "image_url", image_url: { url: a.url } });
@@ -133,6 +162,26 @@ async function messageToWire(m: Message): Promise<ChatWireMessage> {
             type: "input_audio",
             input_audio: { data: stripDataUrlPrefix(dataUrl), format: audioMimeToFormat(mime) },
           });
+        }
+        // [END]
+      } else {
+        // [START] Phase 5 — stored non-media file → reconstruct a File
+        // handle from the stored data URL so extractAttachmentText can
+        // dispatch on mime / extension the same way it does for fresh
+        // uploads. fetch(data:) is the cheapest way to turn a data URL
+        // into a Blob without touching the disk twice.
+        try {
+          const dataUrl = await readAttachmentAsDataUrl(a.meta);
+          if (dataUrl) {
+            const blob = await (await fetch(dataUrl)).blob();
+            const synth = new File([blob], a.meta.filename, { type: a.meta.mime });
+            const ext = await extractAttachmentText(synth);
+            if (ext.kind !== "skipped" || ext.note) {
+              extractedBlocks.push(formatAttachedFileBlock(ext));
+            }
+          }
+        } catch (e) {
+          console.warn("[chat] stored-attachment extraction failed", e);
         }
         // [END]
       }
@@ -171,10 +220,49 @@ async function messageToWire(m: Message): Promise<ChatWireMessage> {
         }
       }
       // [END]
+    } else {
+      // [START] Phase 5 — extractable non-media files (text / PDF / xlsx / docx)
+      // get parsed into plain text and inlined as an <attached_file> block.
+      try {
+        const ext = await extractAttachmentText(a.file);
+        if (ext.kind !== "skipped" || ext.note) {
+          extractedBlocks.push(formatAttachedFileBlock(ext));
+        }
+      } catch (e) {
+        console.warn("[chat] attachment extraction failed", e);
+      }
+      // [END]
     }
   }
+
+  // [START] Phase 5 — append extracted blocks as a single text part. When
+  // the rest of the message already has multimodal parts, we keep the parts
+  // array; otherwise we collapse back to a plain string so the wire stays
+  // compatible with text-only models.
+  if (extractedBlocks.length > 0) {
+    const joined = extractedBlocks.join("\n\n");
+    const existingText = parts.find((p) => p.type === "text");
+    if (existingText && existingText.type === "text") {
+      existingText.text = existingText.text
+        ? `${existingText.text}\n\n${joined}`
+        : joined;
+    } else {
+      parts.push({ type: "text", text: joined });
+    }
+  }
+  // [END]
+
   const hasMultimodal = parts.some((p) => p.type === "image_url" || p.type === "input_audio");
-  return { role, content: hasMultimodal ? parts : m.content };
+  if (parts.length === 0) return { role, content: m.content };
+  // If there's only a single text part and no multimodal parts, send the
+  // content as a plain string so text-only models don't choke on the array
+  // form. Multimodal parts always require the array form.
+  if (!hasMultimodal) {
+    const texts = parts.filter((p): p is { type: "text"; text: string } => p.type === "text");
+    const merged = texts.map((t) => t.text).filter((t) => t.length > 0).join("\n\n");
+    return { role, content: merged || m.content };
+  }
+  return { role, content: parts };
 }
 // [END]
 
@@ -272,6 +360,162 @@ export const useChatStore = create<ChatStoreState>((set, get) => {
       const limit = typeof args.limit === "number" && args.limit > 0 ? args.limit : 8;
       return await webSearch(query, limit);
     }
+    // [START] Phase 6.4 — MCP memory bridge: Wiki FTS-backed replacement for
+    // `@modelcontextprotocol/server-memory`. All memory_* tools return plain
+    // JSON-serializable dicts so the <tool_result> wire format stays identical
+    // to other tools.
+    if (name === "memory_search") {
+      const query = typeof args.query === "string" ? args.query : "";
+      const raw = typeof args.limit === "number" ? args.limit : 5;
+      const limit = Math.max(1, Math.min(raw, 20));
+      const projectPath = useProjectContextStore.getState().project_path;
+      const pages = await hybridSearchWikiPages(query, { limit, projectPath });
+      return {
+        query,
+        count: pages.length,
+        results: pages.map((p) => ({
+          id: p.id,
+          title: p.title,
+          tier: p.tier,
+          tags: p.tags,
+          content: p.content,
+          updated_at: p.updated_at,
+          archived: p.archived,
+          project_path: p.project_path,
+        })),
+      };
+    }
+    if (name === "memory_add") {
+      const title = typeof args.title === "string" ? args.title.trim() : "";
+      const content = typeof args.content === "string" ? args.content : "";
+      if (!title) return { error: "title required" };
+      const tierRaw = typeof args.tier === "string" ? args.tier : "note";
+      const tier: WikiTier =
+        tierRaw === "casebook" || tierRaw === "canonical" ? tierRaw : "note";
+      const tags = Array.isArray(args.tags)
+        ? (args.tags as unknown[]).filter((t): t is string => typeof t === "string")
+        : undefined;
+      // Namespace new memory entries to the active project so they don't leak
+      // across worktrees. Caller can override by passing project_path: null.
+      const projectPath =
+        args.project_path === null
+          ? null
+          : typeof args.project_path === "string"
+            ? args.project_path
+            : useProjectContextStore.getState().project_path;
+      const page = await createWikiPage({ title, content, tier, tags, project_path: projectPath });
+      // [START] Phase 6.4 — best-effort embedding for semantic retrieval
+      void (async () => {
+        try {
+          const text = `${page.title}\n\n${page.content.slice(0, 2000)}`.trim();
+          if (!text) return;
+          const encoded = await embedTexts([text]);
+          if (!encoded || encoded.embeddings.length === 0) return;
+          await upsertWikiEmbedding(page.id, encoded.embeddings[0], encoded.model);
+        } catch {
+          /* optional feature — ignore */
+        }
+      })();
+      // [END]
+      // Keep the Wiki UI in sync — best-effort, not awaited to avoid blocking.
+      try {
+        const mod = await import("./wiki");
+        void mod.useWikiStore.getState().reload();
+      } catch {
+        /* wiki store not loaded in headless call — tolerate */
+      }
+      return {
+        id: page.id,
+        title: page.title,
+        slug: page.slug,
+        tier: page.tier,
+        created_at: page.created_at,
+      };
+    }
+    if (name === "memory_list") {
+      const raw = typeof args.limit === "number" ? args.limit : 20;
+      const limit = Math.max(1, Math.min(raw, 100));
+      const includeArchived = args.include_archived === true;
+      const projectPath = useProjectContextStore.getState().project_path;
+      const pages = await listWikiPages({ includeArchived, projectPath });
+      const sliced = pages.slice(0, limit);
+      return {
+        count: sliced.length,
+        total: pages.length,
+        results: sliced.map((p) => ({
+          id: p.id,
+          title: p.title,
+          tier: p.tier,
+          tags: p.tags,
+          pinned: p.pinned,
+          archived: p.archived,
+          updated_at: p.updated_at,
+        })),
+      };
+    }
+    if (name === "memory_delete") {
+      const id = typeof args.id === "string" ? args.id : "";
+      if (!id) return { error: "id required" };
+      await deleteWikiPage(id);
+      try {
+        const mod = await import("./wiki");
+        void mod.useWikiStore.getState().reload();
+      } catch {
+        /* ignore */
+      }
+      return { deleted: id };
+    }
+    // [START] Phase 8 — memory_archive_page: soft-hide a page from default
+    // retrieval / listing without losing it. Pass `archived: false` to revive.
+    if (name === "memory_archive_page") {
+      const id = typeof args.id === "string" ? args.id : "";
+      if (!id) return { error: "id required" };
+      const archived = args.archived === false ? false : true;
+      await archiveWikiPage(id, archived);
+      try {
+        const mod = await import("./wiki");
+        void mod.useWikiStore.getState().reload();
+      } catch {
+        /* ignore */
+      }
+      return { id, archived };
+    }
+    if (name === "memory_lint_wiki") {
+      const staleDaysRaw = typeof args.stale_days === "number" ? args.stale_days : 180;
+      const oversizedRaw =
+        typeof args.oversized_chars === "number" ? args.oversized_chars : 8000;
+      const issues = await lintWiki({
+        staleDays: Math.max(7, staleDaysRaw),
+        oversizedChars: Math.max(1000, oversizedRaw),
+      });
+      const summary = { orphan: 0, stale: 0, oversized: 0, duplicate: 0 };
+      for (const i of issues) summary[i.category]++;
+      return {
+        total: issues.length,
+        summary,
+        issues: issues.slice(0, 100),
+      };
+    }
+    if (name === "memory_backlinks") {
+      const target = typeof args.target === "string" ? args.target : "";
+      if (!target) return { error: "target required" };
+      const hits = await getBacklinks(target);
+      return {
+        target,
+        count: hits.length,
+        results: hits.map((h) => ({
+          id: h.page.id,
+          title: h.page.title,
+          slug: h.page.slug,
+          tier: h.page.tier,
+          ref_count: h.count,
+          updated_at: h.page.updated_at,
+          archived: h.page.archived,
+        })),
+      };
+    }
+    // [END]
+    // [END]
     throw new Error(`Unknown built-in tool: ${name}`);
   }
   // [END]
@@ -410,7 +654,12 @@ export const useChatStore = create<ChatStoreState>((set, get) => {
       // Sampling overrides from the profile are applied just before streamChat
       // below. Profile system blocks merge into the same wire[0] system slot
       // as project context / MCP tools so there's exactly one system message.
-      const activeProfile = useModelProfilesStore.getState().getActive();
+      // [START] Phase 8 — feature flag: enable_personas off ⇒ ignore persona
+      const flags = useFeatureFlagsStore.getState();
+      const activeProfile = flags.enable_personas
+        ? useModelProfilesStore.getState().getActive()
+        : null;
+      // [END]
       const globalHonorific = useChatSettingsStore.getState().user_honorific.trim();
       const effectiveHonorific =
         (activeProfile?.user_honorific?.trim() || globalHonorific).trim();
@@ -442,6 +691,25 @@ export const useChatStore = create<ChatStoreState>((set, get) => {
         /* ignore import failure — plan hint is best-effort */
       }
       // [END]
+
+      // [START] Phase 8 — response-style discipline.
+      // Same guidance the code agent uses: keep internal deliberation out of
+      // the visible answer, and don't spiral into paragraph-level repetition.
+      // The UI already hides matching lines via hideSelfTalk, but stopping
+      // the model from emitting them in the first place saves tokens and
+      // prevents partial-line leaks during streaming. Written in Korean +
+      // English so models biased toward either language still pick it up.
+      profileLines.push(
+        [
+          "응답 규칙 / response style (strict):",
+          "- 메타 대화(self-talk)를 본문에 쓰지 마. \"Okay, ...\", \"Wait, ...\",",
+          "  \"Hmm, ...\", \"Actually, ...\", \"Let me ...\", \"I should ...\",",
+          "  \"The user ...\", \"Looking at ...\" 같은 문장은 <think>…</think>",
+          "  안에만 쓰거나 아예 생략.",
+          "- Never repeat the same sentence or paragraph verbatim.",
+        ].join("\n"),
+      );
+      // [END]
       const profileSystemPrompt = profileLines.join("\n\n");
       // [END]
 
@@ -451,12 +719,22 @@ export const useChatStore = create<ChatStoreState>((set, get) => {
       //   3. per-session system_prompt (user-authored)
       // NOT persisted to DB — injected only at wire-build time.
       const effectiveContextPrompt = useProjectContextStore.getState().getEffectivePrompt();
+      // [START] Phase 6.4 — skills catalog (.ovo/skills/*.md) — enabled entries
+      // get concatenated as a <ovo_skills> block alongside the other system
+      // content. Empty string when no folder or no enabled skills.
+      // [START] Phase 8 — feature flag: enable_skills_injection off ⇒ skip block
+      const effectiveSkillsPrompt = flags.enable_skills_injection
+        ? useSkillsStore.getState().getEffectivePrompt()
+        : "";
+      // [END]
+      // [END]
       const sessions2 = useSessionsStore.getState();
       const sessForPrompt = sessions2.sessions.find((s) => s.id === sessionId);
       const sessionSystemPrompt = sessForPrompt?.system_prompt ?? null;
       const systemBlocks = [
         profileSystemPrompt || null,
         effectiveContextPrompt || null,
+        effectiveSkillsPrompt || null,
         sessionSystemPrompt || null,
       ].filter((b): b is string => !!b && b.length > 0);
       if (systemBlocks.length > 0) {
@@ -468,25 +746,35 @@ export const useChatStore = create<ChatStoreState>((set, get) => {
       // Prepended before any project-context system block, concatenated with \n\n---\n\n.
       // Phase 6.4: OVO built-in tools (web_search etc.) always appear alongside
       // whatever MCP servers the user has configured.
-      const allTools = [...BUILTIN_TOOLS, ...useMcpStore.getState().getAllTools()];
+      // [START] Phase 8 — feature flag: enable_memory_tools off ⇒ filter out
+      // the memory_* family so the model never sees them as callable.
+      const builtinTools = flags.enable_memory_tools
+        ? BUILTIN_TOOLS
+        : BUILTIN_TOOLS.filter((t) => !t.name.startsWith("memory_"));
+      const allTools = [...builtinTools, ...useMcpStore.getState().getAllTools()];
+      // [END]
+      // [START] Safe system content access — wire[0].content may be a
+      // ChatContentPart[] in multimodal conversations; guard with typeof.
       if (allTools.length > 0) {
         const toolsPrompt = buildToolsSystemMessage(allTools);
-        if (wire.length > 0 && wire[0].role === "system") {
+        if (wire.length > 0 && wire[0].role === "system" && typeof wire[0].content === "string") {
           wire[0] = {
             role: "system",
-            content: `${toolsPrompt}\n\n---\n\n${wire[0].content as string}`,
+            content: `${toolsPrompt}\n\n---\n\n${wire[0].content}`,
           };
         } else {
           wire.unshift({ role: "system", content: toolsPrompt });
         }
       }
       // [END]
+      // [END]
 
       // [START] Phase 6.3 — wiki retrieval: FTS-match the latest user message
       // against the local wiki and inject top-N pages as part of the system
       // prompt. Budget-capped at ~4000 chars total to keep prompt tokens
       // reasonable; callers hitting the limit see a trimmed message block.
-      try {
+      // [START] Phase 8 — feature flag: enable_wiki_retrieval off ⇒ skip block
+      if (flags.enable_wiki_retrieval) try {
         const lastUser = [...liveMessages].reverse().find((m) => m.role === "user");
         if (lastUser) {
           const userText = typeof lastUser.content === "string"
@@ -494,7 +782,8 @@ export const useChatStore = create<ChatStoreState>((set, get) => {
             : String(lastUser.content ?? "");
           const query = userText.slice(0, 200);
           if (query.trim()) {
-            const pages = await searchWikiPages(query, 3);
+            const projectPath = useProjectContextStore.getState().project_path;
+            const pages = await hybridSearchWikiPages(query, { limit: 3, projectPath });
             if (pages.length > 0) {
               const WIKI_BUDGET = 4000;
               let used = 0;
@@ -512,14 +801,16 @@ export const useChatStore = create<ChatStoreState>((set, get) => {
               if (sections.length > 0) {
                 const wikiPrompt =
                   `<project_wiki>\n${sections.join("\n\n---\n\n")}\n</project_wiki>`;
-                if (wire.length > 0 && wire[0].role === "system") {
+                // [START] Safe system content access — guard against multimodal arrays.
+                if (wire.length > 0 && wire[0].role === "system" && typeof wire[0].content === "string") {
                   wire[0] = {
                     role: "system",
-                    content: `${wire[0].content as string}\n\n---\n\n${wikiPrompt}`,
+                    content: `${wire[0].content}\n\n---\n\n${wikiPrompt}`,
                   };
                 } else {
                   wire.unshift({ role: "system", content: wikiPrompt });
                 }
+                // [END]
               }
             }
           }

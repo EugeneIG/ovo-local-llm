@@ -4,6 +4,7 @@ import type { SidecarHealth } from "../types/sidecar";
 
 const DOT_COLORS: Record<SidecarHealth, string> = {
   stopped: "bg-neutral-400",
+  bootstrapping: "bg-sky-400 animate-pulse",
   starting: "bg-amber-400 animate-pulse",
   healthy: "bg-emerald-500",
   failed: "bg-rose-500",
@@ -31,13 +32,15 @@ export function SidecarIndicator() {
       <button
         onClick={() => void restart()}
         className="ml-auto text-[11px] px-2 py-1 rounded bg-ovo-accent text-ovo-accent-ink hover:bg-ovo-accent-hover transition disabled:opacity-50"
-        disabled={status.health === "starting"}
+        disabled={status.health === "starting" || status.health === "bootstrapping"}
       >
-        {status.health === "starting"
-          ? t("sidecar.restarting")
-          : status.health === "stopped"
-            ? t("sidecar.start")
-            : t("sidecar.restart")}
+        {status.health === "bootstrapping"
+          ? t("sidecar.installing")
+          : status.health === "starting"
+            ? t("sidecar.restarting")
+            : status.health === "stopped"
+              ? t("sidecar.start")
+              : t("sidecar.restart")}
       </button>
     </div>
   );

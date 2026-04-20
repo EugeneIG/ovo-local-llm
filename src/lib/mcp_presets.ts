@@ -31,14 +31,11 @@ export const MCP_PRESETS: ReadonlyArray<McpPreset> = [
     env: {},
     requires: ["project_path"],
   },
-  {
-    id: "memory",
-    name: "🧠 메모리",
-    description: "영속 key-value 메모리 (Wiki 연계 예정)",
-    command: "npx",
-    args_template: ["-y", "@modelcontextprotocol/server-memory"],
-    env: {},
-  },
+  // [START] Phase 6.4 — `@modelcontextprotocol/server-memory` 프리셋 제거.
+  // OVO 내장 `memory_search` / `memory_add` / `memory_list` / `memory_delete`
+  // 도구가 동일한 역할을 Wiki FTS5 백엔드로 제공한다. (BUILTIN_TOOLS 참고.)
+  // 외부 프로세스 없이 영속 지식을 다루게 되어 서브프로세스 공급망 노출도 줄어든다.
+  // [END]
   {
     id: "sequential-thinking",
     name: "🌀 Sequential Thinking",

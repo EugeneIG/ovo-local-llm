@@ -14,9 +14,29 @@
     "sql:allow-select",
     "fs:allow-app-write-recursive",
     "fs:allow-app-read-recursive",
-    "fs:allow-remove",
+    {
+      "identifier": "fs:allow-remove",
+      "allow": [
+        { "path": "$APPDATA/attachments/**" },
+        { "path": "$APPDATA/sql/**" },
+        { "path": "$APPDATA/images/**" },
+        { "path": "$APPLOCALDATA/attachments/**" },
+        { "path": "$APPLOCALDATA/sql/**" },
+        { "path": "$APPLOCALDATA/images/**" }
+      ]
+    },
     "fs:scope-app-recursive",
     "dialog:default",
-    "dialog:allow-open"
+    "dialog:allow-open",
+    {
+      "identifier": "shell:allow-open",
+      "allow": [
+        { "url": "https://**" },
+        { "url": "http://localhost/**" },
+        { "url": "http://localhost:**" },
+        { "url": "http://127.0.0.1/**" },
+        { "url": "http://127.0.0.1:**" }
+      ]
+    }
   ]
 }

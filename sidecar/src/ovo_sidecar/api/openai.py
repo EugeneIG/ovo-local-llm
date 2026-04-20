@@ -300,10 +300,15 @@ async def chat_completions(req: OpenAIChatRequest):
     gen_tokens = 0
     async for chunk in stream_iter():
         content += chunk.text
+        # [START] Always capture the latest token counts — mlx-vlm may not set
+        # finish_reason so chunk.done stays False, but counts are still valid.
+        if chunk.prompt_tokens:
+            prompt_tokens = chunk.prompt_tokens
+        if chunk.generation_tokens:
+            gen_tokens = chunk.generation_tokens
+        # [END]
         if chunk.done:
             final_reason = chunk.finish_reason or "stop"
-            prompt_tokens = chunk.prompt_tokens or 0
-            gen_tokens = chunk.generation_tokens or 0
 
     return {
         "id": completion_id,
@@ -387,3 +392,74 @@ async def completions(req: OpenAICompletionRequest):
         "model": req.model,
         "choices": [{"text": text, "index": 0, "finish_reason": final_reason}],
     }
+
+
+# [START] Phase 7 — OpenAI-compatible images endpoint.
+# Surfaces the local diffusion_runner at /v1/images/generations so third-party
+# OpenAI clients (draw things style UIs, Cursor image plugins, custom scripts)
+# can hit OVO the same way they'd hit api.openai.com/v1/images/generations.
+# We honor the mandatory fields (prompt, model, size, n) + the OVO extensions
+# (sampler, steps, cfg_scale, seed, negative_prompt) via `extra`-style kwargs.
+class OpenAIImageRequest(BaseModel):
+    prompt: str
+    model: str | None = None
+    size: str = "1024x1024"   # "WxH"
+    n: int = 1
+    response_format: Literal["url", "b64_json"] = "b64_json"
+    # OVO extensions (safely ignored by strict OpenAI clients).
+    negative_prompt: str = ""
+    sampler: str = "dpm++_2m_karras"
+    steps: int = 28
+    cfg_scale: float = 7.0
+    seed: int | None = None
+    shift: float | None = None
+
+
+def _parse_size(size: str) -> tuple[int, int]:
+    try:
+        w_str, h_str = size.lower().split("x", 1)
+        return max(64, int(w_str)), max(64, int(h_str))
+    except Exception:
+        return 1024, 1024
+
+
+@router.post("/images/generations")
+async def openai_images_generations(req: OpenAIImageRequest) -> dict[str, Any]:
+    from ovo_sidecar.mlx_diffusion_runner import (
+        GenerateRequest as DiffusionRequest,
+        diffusion_runner,
+    )
+
+    model_ref = req.model or registry.default_model
+    if not model_ref:
+        raise HTTPException(status_code=400, detail="model required (no default set)")
+
+    width, height = _parse_size(req.size)
+    diff_req = DiffusionRequest(
+        prompt=req.prompt,
+        model=model_ref,
+        negative_prompt=req.negative_prompt,
+        width=width,
+        height=height,
+        steps=req.steps,
+        cfg_scale=req.cfg_scale,
+        sampler=req.sampler,
+        seed=req.seed,
+        batch=max(1, int(req.n)),
+        shift=req.shift,
+    )
+    try:
+        result = await diffusion_runner.generate(diff_req)
+    except RuntimeError as e:
+        raise HTTPException(status_code=501, detail=str(e)) from e
+
+    # OpenAI response format: {"created": ts, "data": [{"b64_json": ...} | {"url": ...}]}
+    data: list[dict[str, Any]] = []
+    for img in result.images:
+        if req.response_format == "url":
+            data.append({"url": f"file://{img.path}"})
+        else:
+            data.append({"b64_json": img.base64_png})
+    return {"created": int(time.time()), "data": data}
+# [END] Phase 7
+

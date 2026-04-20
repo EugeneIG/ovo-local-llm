@@ -3,17 +3,22 @@ import { emit, listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 import { Sidebar, type NavKey } from "./Sidebar";
 import { ToastStack } from "./Toast";
+import { SidecarTransitionModal } from "./SidecarTransitionModal";
+import { SidecarBootstrapModal } from "./SidecarBootstrapModal";
+import { ModelSwapToast } from "./ModelSwapToast";
 import { ChatPane } from "../panes/ChatPane";
 import { CodePane } from "../panes/CodePane";
 import { ImagePane } from "../panes/ImagePane";
 import { WikiPane } from "../panes/WikiPane";
 import { ModelsPane } from "../panes/ModelsPane";
+import { FitPane } from "../panes/FitPane";
 import { SettingsPane } from "../panes/SettingsPane";
 import { AboutPane } from "../panes/AboutPane";
 import { useSidecarStore } from "../store/sidecar";
 import { useChatSettingsStore } from "../store/chat_settings";
 import { useModelOverridesStore } from "../store/model_overrides";
 import { useChatStore } from "../store/chat";
+import { useCodeAgentStore } from "../store/code_agent";
 import { usePetStore } from "../store/pet";
 // [START] theme bootstrap
 import { useThemeStore } from "../store/theme";
@@ -38,16 +43,34 @@ import { useToolModeStore } from "../store/tool_mode";
 // [START] Phase 6.4 — model profiles bootstrap
 import { useModelProfilesStore } from "../store/model_profiles";
 // [END]
+// [START] Phase 8 — feature flags bootstrap
+import { useFeatureFlagsStore } from "../store/feature_flags";
+// [END]
+// [START] Phase 6.4 — skills bootstrap + project-path subscription
+import { useSkillsStore } from "../store/skills";
+// [END]
 
 export function AppShell() {
   const [active, setActive] = useState<NavKey>("chat");
   const subscribe = useSidecarStore((s) => s.subscribe);
   const unsubscribe = useSidecarStore((s) => s.unsubscribe);
-  const owlState = useChatStore((s) => s.owlState);
+  // [START] Phase 8 — owl state multiplex.
+  // The pet window listens to a single "owl:state" stream, but the chat
+  // store and the code-agent store each drive their own owl. Active tab
+  // decides which source is authoritative so switching to Code doesn't
+  // leave the owl stuck on the previous chat's "happy" frame, and the
+  // code agent's thinking/typing transitions actually reach the pet.
+  const chatOwlState = useChatStore((s) => s.owlState);
+  const agentOwlState = useCodeAgentStore((s) => s.owlState);
+  const owlState = active === "code" ? agentOwlState : chatOwlState;
+  // [END]
   const petEnabled = usePetStore((s) => s.pet_enabled);
 
   // [START] Bootstrap global settings stores once on mount (R.6)
   useEffect(() => {
+    // [START] Phase 8 — load feature flags first so gates apply during boot
+    useFeatureFlagsStore.getState().load();
+    // [END]
     useChatSettingsStore.getState().load();
     void useModelOverridesStore.getState().load();
     // [START] theme bootstrap — apply persisted theme class to <html> before first paint
@@ -71,6 +94,24 @@ export function AppShell() {
     // [START] Phase 6.4 — model profiles bootstrap
     useModelProfilesStore.getState().load();
     // [END]
+    // [START] Phase 6.4 — skills bootstrap: hydrate + rescan once the project
+    // context store has finished resolving its default path. We run load() up
+    // front (hydrates localStorage only) then subscribe to project_context for
+    // rescan on folder change. The initial rescan happens after project_context
+    // resolves its home-dir fallback, via the subscribe hook below.
+    useSkillsStore.getState().load();
+    // [START] Phase 8 — Code sessions bootstrap
+    import("../store/code_sessions").then((m) => m.useCodeSessionsStore.getState().load()).catch(() => {});
+    // [END]
+    const unsubscribeProjectPath = useProjectContextStore.subscribe((state, prev) => {
+      if (state.project_path !== prev.project_path) {
+        void useSkillsStore.getState().rescan();
+        // [START] Phase 8 — personas live under .ovo/personas/, follow project switches
+        void useModelProfilesStore.getState().rescan();
+        // [END]
+      }
+    });
+    // [END]
     // [START] Phase 6.4 — slash command /wiki /models /settings nav listener
     const onNav = (e: Event) => {
       const target = (e as CustomEvent<NavKey>).detail;
@@ -80,6 +121,7 @@ export function AppShell() {
     // [END]
     return () => {
       window.removeEventListener("ovo:navigate", onNav);
+      unsubscribeProjectPath();
     };
   }, []);
   // [END]
@@ -151,7 +193,8 @@ export function AppShell() {
       // [START] auto-start fallback — if the native spawn didn't transition
       // past "stopped" within 2s (bundle path missing, port conflict, etc.),
       // kick a restart from the frontend so the user sees the sidecar come up
-      // without needing to touch the 💾 button.
+      // without needing to touch the 💾 button. Skip when the sidecar is
+      // mid-install ("bootstrapping") so we don't interrupt `uv sync`.
       autostartTimer = setTimeout(() => {
         const s = useSidecarStore.getState().status;
         if (s.health === "stopped") {
@@ -169,6 +212,9 @@ export function AppShell() {
   return (
     <div className="h-screen flex bg-ovo-bg text-ovo-text">
       <ToastStack />
+      <SidecarBootstrapModal />
+      <SidecarTransitionModal />
+      <ModelSwapToast />
       <Sidebar active={active} onSelect={setActive} />
       <main className="flex-1 flex flex-col min-w-0">
         <div className="flex-1 overflow-hidden">
@@ -177,6 +223,7 @@ export function AppShell() {
           {active === "image" && <ImagePane />}
           {active === "wiki" && <WikiPane />}
           {active === "models" && <ModelsPane />}
+          {active === "fit" && <FitPane />}
           {active === "settings" && <SettingsPane />}
           {active === "about" && <AboutPane />}
         </div>

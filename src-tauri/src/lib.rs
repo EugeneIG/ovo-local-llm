@@ -2,7 +2,10 @@ use serde::Serialize;
 use tauri::{AppHandle, Manager, RunEvent};
 use tauri_plugin_sql::{Migration, MigrationKind};
 
+mod code_fs;
+mod git_ops;
 mod mcp;
+mod pty;
 mod sidecar;
 
 use mcp::McpState;
@@ -29,6 +32,30 @@ fn chats_migrations() -> Vec<Migration> {
             version: 3,
             description: "wiki: add tier column for Note / Casebook / Canonical",
             sql: include_str!("../migrations/003_wiki_tier.sql"),
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 4,
+            description: "wiki: embeddings cache for semantic search",
+            sql: include_str!("../migrations/004_embeddings.sql"),
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 5,
+            description: "wiki: archive flag + project_path namespace",
+            sql: include_str!("../migrations/005_wiki_archive_namespace.sql"),
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 6,
+            description: "code: IDE sessions + agent messages",
+            sql: include_str!("../migrations/006_code_sessions.sql"),
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 7,
+            description: "sessions: parent_session_id + parent_message_id for forks",
+            sql: include_str!("../migrations/007_message_branching.sql"),
             kind: MigrationKind::Up,
         },
     ]
@@ -60,6 +87,15 @@ async fn sidecar_restart(app: AppHandle) -> Result<(), String> {
     Ok(())
 }
 
+// [START] Phase R — user-initiated runtime reinstall.
+// Removes the user venv under $APPDATA/runtime/sidecar-venv and re-triggers
+// the bootstrap flow. Exposed to the frontend for the Settings button.
+#[tauri::command]
+async fn sidecar_reinstall_runtime(app: AppHandle) -> Result<(), String> {
+    sidecar::reinstall_runtime(app).await
+}
+// [END]
+
 // [START] Phase 6.1 — read project context files (CLAUDE.md / AGENTS.md / GEMINI.md)
 // Runs on the Rust side so no JS FS permission gymnastics are needed.
 const CONTEXT_FILENAMES: &[&str] = &["CLAUDE.md", "AGENTS.md", "GEMINI.md"];
@@ -88,6 +124,18 @@ fn read_md_file(path: String) -> Result<MdFileResult, String> {
     use std::path::Path;
 
     let p = Path::new(&path);
+
+    // [START] Security — restrict to .md / .markdown extensions to prevent
+    // arbitrary file reads (e.g. /etc/passwd) from a compromised webview.
+    let ext = p
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(|s| s.to_ascii_lowercase());
+    if !matches!(ext.as_deref(), Some("md") | Some("markdown")) {
+        return Err("only .md / .markdown files are permitted".into());
+    }
+    // [END]
+
     let name = p
         .file_name()
         .map(|n| n.to_string_lossy().into_owned())
@@ -104,6 +152,72 @@ fn read_md_file(path: String) -> Result<MdFileResult, String> {
     };
 
     Ok(MdFileResult { name, content, size_bytes })
+}
+// [END]
+
+// [START] Phase 8 — write_md_file / delete_md_file
+// Companion writes to read_md_file. Scope-locked to paths containing a
+// `/.ovo/` segment so a compromised webview cannot clobber arbitrary files.
+// Required by md-backed stores (personas, skills, future wiki import).
+#[tauri::command]
+fn write_md_file(path: String, content: String) -> Result<(), String> {
+    use std::fs;
+    use std::path::Path;
+
+    let p = Path::new(&path);
+
+    let ext = p
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(|s| s.to_ascii_lowercase());
+    if !matches!(ext.as_deref(), Some("md") | Some("markdown")) {
+        return Err("only .md / .markdown files are permitted".into());
+    }
+
+    let path_str = p.to_string_lossy();
+    if !path_str.contains("/.ovo/") && !path_str.contains("\\.ovo\\") {
+        return Err("writes restricted to .ovo/** paths".into());
+    }
+
+    if content.len() > CONTEXT_MAX_BYTES as usize {
+        return Err(format!("content too large (>{CONTEXT_MAX_BYTES} bytes)"));
+    }
+
+    if let Some(parent) = p.parent() {
+        fs::create_dir_all(parent)
+            .map_err(|e| format!("mkdir -p {}: {}", parent.display(), e))?;
+    }
+
+    fs::write(p, content).map_err(|e| format!("write {path}: {e}"))?;
+    Ok(())
+}
+
+#[tauri::command]
+fn delete_md_file(path: String) -> Result<(), String> {
+    use std::fs;
+    use std::path::Path;
+
+    let p = Path::new(&path);
+
+    let ext = p
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(|s| s.to_ascii_lowercase());
+    if !matches!(ext.as_deref(), Some("md") | Some("markdown")) {
+        return Err("only .md / .markdown files are permitted".into());
+    }
+
+    let path_str = p.to_string_lossy();
+    if !path_str.contains("/.ovo/") && !path_str.contains("\\.ovo\\") {
+        return Err("deletes restricted to .ovo/** paths".into());
+    }
+
+    if !p.is_file() {
+        return Err(format!("not a file: {path}"));
+    }
+
+    fs::remove_file(p).map_err(|e| format!("remove {path}: {e}"))?;
+    Ok(())
 }
 // [END]
 
@@ -271,10 +385,15 @@ fn read_project_context(project_path: String) -> Result<ProjectContextResult, St
 // [START] Phase 7 — pet window lifecycle commands
 #[tauri::command]
 fn pet_show(app: AppHandle) -> Result<(), String> {
-    app.get_webview_window("pet")
-        .ok_or_else(|| "pet window not found".to_string())?
-        .show()
-        .map_err(|e| e.to_string())
+    let win = app
+        .get_webview_window("pet")
+        .ok_or_else(|| "pet window not found".to_string())?;
+    // Restore last saved position BEFORE showing so the user never sees the
+    // window flash at the default (centered) location and then jump.
+    if let Some((x, y)) = read_pet_position(&app) {
+        let _ = win.set_position(tauri::PhysicalPosition::new(x, y));
+    }
+    win.show().map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -292,6 +411,81 @@ fn focus_main_window(app: AppHandle) -> Result<(), String> {
         .set_focus()
         .map_err(|e| e.to_string())
 }
+
+// [START] Phase 5 — safe `open -a "<App>" "<url>"` via argv (no shell).
+// Front-end already validates app / url against strict allowlists; we add
+// a second server-side check so a compromised renderer can't pass unsafe
+// values through. Only http/https with localhost + 127.0.0.1 hosts are
+// accepted, and the app name must match /^[\w .&-]+$/.
+#[tauri::command]
+fn browser_open_with_app(app: String, url: String) -> Result<(), String> {
+    // Re-validate inputs server-side.
+    if app.is_empty() || app.len() > 64 {
+        return Err("app name rejected".into());
+    }
+    if !app.chars().all(|c| c.is_alphanumeric() || " .&-_".contains(c)) {
+        return Err("app name contains disallowed characters".into());
+    }
+    let url_ok = (url.starts_with("http://localhost")
+        || url.starts_with("http://127.0.0.1")
+        || url.starts_with("https://localhost")
+        || url.starts_with("https://127.0.0.1"))
+        && !url.contains('\n')
+        && !url.contains('\r')
+        && !url.contains('`')
+        && !url.contains('$')
+        && !url.contains('"')
+        && !url.contains('\\');
+    if !url_ok {
+        return Err("url rejected (only http(s)://localhost* accepted)".into());
+    }
+    let status = std::process::Command::new("open")
+        .arg("-a")
+        .arg(&app)
+        .arg(&url)
+        .status()
+        .map_err(|e| format!("spawn failed: {e}"))?;
+    if !status.success() {
+        return Err(format!("open exited with {status}"));
+    }
+    Ok(())
+}
+// [END]
+
+// [START] Phase 5 fix — pet position persistence in a Rust-managed JSON file
+// under the app data dir. We previously tried localStorage inside PetApp, but
+// the pet window's WebView context is not guaranteed to share localStorage
+// across cold starts on every macOS version — users saw the pet re-spawn at
+// the default position after every restart. Storing from Rust sidesteps the
+// WebView entirely and survives app quits.
+fn pet_position_path(app: &AppHandle) -> Option<std::path::PathBuf> {
+    app.path().app_data_dir().ok().map(|d| d.join("pet_position.json"))
+}
+
+fn read_pet_position(app: &AppHandle) -> Option<(i32, i32)> {
+    let p = pet_position_path(app)?;
+    let raw = std::fs::read_to_string(&p).ok()?;
+    let v: serde_json::Value = serde_json::from_str(&raw).ok()?;
+    let x = v.get("x")?.as_i64()? as i32;
+    let y = v.get("y")?.as_i64()? as i32;
+    Some((x, y))
+}
+
+#[tauri::command]
+fn pet_get_position(app: AppHandle) -> Result<Option<(i32, i32)>, String> {
+    Ok(read_pet_position(&app))
+}
+
+#[tauri::command]
+fn pet_save_position(app: AppHandle, x: i32, y: i32) -> Result<(), String> {
+    let p = pet_position_path(&app).ok_or_else(|| "app_data_dir unavailable".to_string())?;
+    if let Some(parent) = p.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    }
+    let payload = serde_json::json!({ "x": x, "y": y });
+    std::fs::write(&p, payload.to_string()).map_err(|e| e.to_string())
+}
+// [END]
 // [END]
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -310,25 +504,70 @@ pub fn run() {
             // [START] Phase 6.2a — MCP state registration
             app.manage(McpState::new());
             // [END]
+            // [START] Phase 8.2 — PTY state registration
+            app.manage(pty::PtyState::new());
+            // [END]
+            // [START] Phase 5 — attachment whitelist registration.
+            // Used by code_fs_read_external_file to enforce that only
+            // user-attached paths can be read outside the project scope.
+            app.manage(code_fs::AttachmentWhitelist::new());
+            // [END]
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
             app_info,
             sidecar_status,
             sidecar_restart,
+            sidecar_reinstall_runtime,
             pet_show,
             pet_hide,
+            pet_get_position,
+            pet_save_position,
             focus_main_window,
+            browser_open_with_app,
             read_project_context,
             default_project_path,
             read_md_file,
             read_md_dir,
+            write_md_file,
+            delete_md_file,
             npm_search,
             // [START] Phase 6.2a — MCP commands
             mcp::mcp_start,
             mcp::mcp_call,
             mcp::mcp_stop,
-            mcp::mcp_list
+            mcp::mcp_list,
+            // [END]
+            // [START] Phase 8 — Code IDE file system commands
+            code_fs::code_fs_list_tree,
+            code_fs::code_fs_read_file,
+            code_fs::code_fs_read_external_file,
+            code_fs::attachment_whitelist_register,
+            code_fs::attachment_whitelist_clear,
+            code_fs::code_fs_write_file,
+            code_fs::code_fs_create_file,
+            code_fs::code_fs_rename,
+            code_fs::code_fs_delete,
+            code_fs::code_fs_mkdir,
+            code_fs::code_fs_search,
+            code_fs::code_fs_exec,
+            code_fs::code_fs_reveal,
+            // [END]
+            // [START] Phase 8.2 — PTY commands
+            pty::pty_spawn,
+            pty::pty_write,
+            pty::pty_resize,
+            pty::pty_kill,
+            // [END]
+            // [START] Phase 8.2 — Git commands
+            git_ops::git_status,
+            git_ops::git_diff,
+            git_ops::git_log,
+            git_ops::git_commit,
+            git_ops::git_branch_list,
+            git_ops::git_checkout,
+            git_ops::git_stage,
+            git_ops::git_unstage,
             // [END]
         ])
         .build(tauri::generate_context!())

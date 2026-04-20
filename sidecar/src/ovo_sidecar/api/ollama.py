@@ -105,21 +105,39 @@ async def chat(req: OllamaChatRequest):
             final_reason: str | None = None
             prompt_tokens: int | None = None
             gen_tokens: int | None = None
-            async for chunk in runner.stream_chat(
-                model_id, messages, max_tokens=max_tokens, temperature=temp, top_p=top_p
-            ):
+            # [START] Error handling — emit a proper done frame on failure so
+            # Ollama-protocol clients don't interpret the abrupt close as a
+            # network error and retry indefinitely.
+            try:
+                async for chunk in runner.stream_chat(
+                    model_id, messages, max_tokens=max_tokens, temperature=temp, top_p=top_p
+                ):
+                    yield json.dumps(
+                        {
+                            "model": req.model,
+                            "created_at": _now(),
+                            "message": {"role": "assistant", "content": chunk.text},
+                            "done": False,
+                        }
+                    ) + "\n"
+                    if chunk.done:
+                        final_reason = chunk.finish_reason
+                        prompt_tokens = chunk.prompt_tokens
+                        gen_tokens = chunk.generation_tokens
+            except Exception as e:
+                logger.exception("ollama chat stream error")
                 yield json.dumps(
                     {
                         "model": req.model,
                         "created_at": _now(),
-                        "message": {"role": "assistant", "content": chunk.text},
-                        "done": False,
+                        "message": {"role": "assistant", "content": ""},
+                        "done": True,
+                        "done_reason": "error",
+                        "error": str(e),
                     }
                 ) + "\n"
-                if chunk.done:
-                    final_reason = chunk.finish_reason
-                    prompt_tokens = chunk.prompt_tokens
-                    gen_tokens = chunk.generation_tokens
+                return
+            # [END]
             yield json.dumps(
                 {
                     "model": req.model,
@@ -160,19 +178,35 @@ async def generate(req: OllamaGenerateRequest):
 
         async def event_stream():
             final_reason: str | None = None
-            async for chunk in runner.stream_generate(
-                model_id, req.prompt, max_tokens=max_tokens, temperature=temp, top_p=top_p
-            ):
+            # [START] Error handling — same pattern as chat endpoint.
+            try:
+                async for chunk in runner.stream_generate(
+                    model_id, req.prompt, max_tokens=max_tokens, temperature=temp, top_p=top_p
+                ):
+                    yield json.dumps(
+                        {
+                            "model": req.model,
+                            "created_at": _now(),
+                            "response": chunk.text,
+                            "done": False,
+                        }
+                    ) + "\n"
+                    if chunk.done:
+                        final_reason = chunk.finish_reason
+            except Exception as e:
+                logger.exception("ollama generate stream error")
                 yield json.dumps(
                     {
                         "model": req.model,
                         "created_at": _now(),
-                        "response": chunk.text,
-                        "done": False,
+                        "response": "",
+                        "done": True,
+                        "done_reason": "error",
+                        "error": str(e),
                     }
                 ) + "\n"
-                if chunk.done:
-                    final_reason = chunk.finish_reason
+                return
+            # [END]
             yield json.dumps(
                 {
                     "model": req.model,

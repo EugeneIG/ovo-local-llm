@@ -1,7 +1,24 @@
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { listModels, searchModels, startDownload, getDownload, listDownloads } from "../lib/api";
+import {
+  listModels,
+  searchModels,
+  searchImageModels,
+  startDownload,
+  getDownload,
+  listDownloads,
+  deleteModel,
+  cancelDownload,
+} from "../lib/api";
+import { Trash2, Loader2 } from "lucide-react";
 import type { HfSearchResult, DownloadTask } from "../lib/api";
+import { DownloadCell } from "../components/DownloadCell";
+import {
+  IMAGE_MODEL_CATALOG,
+  catalogByCategory,
+  type CatalogModel,
+} from "../lib/image_model_catalog";
+import { isImageGenModel, isChatCapableModel } from "../lib/models";
 import { useSidecarStore } from "../store/sidecar";
 import { useModelPerfStore } from "../store/model_perf";
 import { useSessionsStore } from "../store/sessions";
@@ -76,9 +93,21 @@ interface HfDownloadSectionProps {
   installedRepoIds: Set<string>;
   ports: ReturnType<typeof useSidecarStore.getState>["status"]["ports"];
   onDownloadDone: () => void;
+  onDelete: (repoId: string) => void | Promise<void>;
+  /** "mlx" = chat / code LLM search, "image" = text-to-image search */
+  kind?: "mlx" | "image";
+  /** Optional curated list rendered above the HF search box */
+  catalog?: readonly CatalogModel[];
 }
 
-function HfDownloadSection({ installedRepoIds, ports, onDownloadDone }: HfDownloadSectionProps) {
+function HfDownloadSection({
+  installedRepoIds,
+  ports,
+  onDownloadDone,
+  onDelete,
+  kind = "mlx",
+  catalog,
+}: HfDownloadSectionProps) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(true);
   const [query, setQuery] = useState("");
@@ -106,16 +135,24 @@ function HfDownloadSection({ installedRepoIds, ports, onDownloadDone }: HfDownlo
   }, [ports]);
   // [END]
 
-  // [START] Polling loop — tick every 1.5 s, poll all "pending" | "downloading" tasks
+  // [START] Polling loop — tick every 1.5 s, poll all "pending" | "downloading" tasks.
+  // Uses a ref to read the latest tasks snapshot inside the interval callback so
+  // the effect only re-runs when ports change (not on every task state update).
+  const tasksRef = useRef(tasks);
+  tasksRef.current = tasks;
+  const onDownloadDoneRef = useRef(onDownloadDone);
+  onDownloadDoneRef.current = onDownloadDone;
+
   useEffect(() => {
     if (pollRef.current) clearInterval(pollRef.current);
 
-    const runningTasks = Object.values(tasks).filter(
-      (t) => t.status === "pending" || t.status === "downloading",
-    );
-    if (runningTasks.length === 0) return;
-
     pollRef.current = setInterval(() => {
+      const currentTasks = tasksRef.current;
+      const runningTasks = Object.values(currentTasks).filter(
+        (tk) => tk.status === "pending" || tk.status === "downloading",
+      );
+      if (runningTasks.length === 0) return;
+
       void Promise.all(
         runningTasks.map((task) =>
           getDownload(task.task_id, ports).then((updated) => {
@@ -127,7 +164,7 @@ function HfDownloadSection({ installedRepoIds, ports, onDownloadDone }: HfDownlo
                   repo: updated.repo_id.split("/").pop() ?? updated.repo_id,
                 }),
               });
-              onDownloadDone();
+              onDownloadDoneRef.current();
             } else if (updated.status === "error") {
               useToastsStore.getState().push({
                 kind: "error",
@@ -144,7 +181,7 @@ function HfDownloadSection({ installedRepoIds, ports, onDownloadDone }: HfDownlo
     return () => {
       if (pollRef.current) clearInterval(pollRef.current);
     };
-  }, [tasks, ports, t, onDownloadDone]);
+  }, [ports, t]);
   // [END]
 
   // [START] Debounced search — 300 ms after last keystroke
@@ -158,7 +195,8 @@ function HfDownloadSection({ installedRepoIds, ports, onDownloadDone }: HfDownlo
     debounceRef.current = setTimeout(() => {
       setSearching(true);
       setSearchError(null);
-      searchModels(query.trim(), 25, ports)
+      const searchFn = kind === "image" ? searchImageModels : searchModels;
+      searchFn(query.trim(), 25, ports)
         .then((res) => {
           setResults(res);
         })
@@ -171,7 +209,28 @@ function HfDownloadSection({ installedRepoIds, ports, onDownloadDone }: HfDownlo
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current);
     };
-  }, [query, ports]);
+  }, [query, ports, kind]);
+  // [END]
+
+  // [START] Phase 7 — cancel handler shared by search + catalog rows
+  async function handleCancel(task: DownloadTask) {
+    try {
+      await cancelDownload(task.task_id, ports);
+      setTasks((prev) => ({
+        ...prev,
+        [task.repo_id]: { ...task, cancel_requested: true },
+      }));
+      useToastsStore.getState().push({
+        kind: "info",
+        message: t("models.download.cancel_sent"),
+      });
+    } catch (e) {
+      useToastsStore.getState().push({
+        kind: "error",
+        message: e instanceof Error ? e.message : String(e),
+      });
+    }
+  }
   // [END]
 
   function handleDownload(repoId: string) {
@@ -245,6 +304,63 @@ function HfDownloadSection({ installedRepoIds, ports, onDownloadDone }: HfDownlo
             {t("models.download.tip")}
           </p>
 
+          {/* [START] Phase 7 — curated catalog (image tab only) */}
+          {catalog && catalog.length > 0 && (
+            <div className="mb-3">
+              {(["official", "community"] as const).map((cat) => {
+                const entries = catalogByCategory()[cat].filter((e) =>
+                  catalog.some((c) => c.repo_id === e.repo_id),
+                );
+                if (entries.length === 0) return null;
+                return (
+                  <section key={cat} className="mb-3">
+                    <h4 className="text-[10px] font-semibold uppercase tracking-wide text-ovo-muted mb-1.5">
+                      {t(`image.header.catalog_${cat}`)}
+                    </h4>
+                    <ul className="grid gap-1">
+                      {entries.map((entry) => {
+                        const installed = installedRepoIds.has(entry.repo_id);
+                        const task = tasks[entry.repo_id] ?? null;
+                        return (
+                          <li
+                            key={entry.repo_id}
+                            className="flex items-start gap-3 px-3 py-2 rounded-lg bg-ovo-surface border border-ovo-border"
+                          >
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="text-xs font-semibold text-ovo-text truncate">
+                                  {entry.name}
+                                </span>
+                                <span className="text-[10px] text-ovo-muted font-mono">
+                                  {entry.size_hint}
+                                </span>
+                              </div>
+                              <div className="text-[11px] text-ovo-muted mt-0.5">
+                                {entry.description}
+                              </div>
+                              <div className="text-[10px] font-mono text-ovo-muted/60 mt-0.5 truncate">
+                                {entry.repo_id}
+                              </div>
+                            </div>
+                            <DownloadCell
+                              repoId={entry.repo_id}
+                              task={task ?? undefined}
+                              already={installed}
+                              onDownload={handleDownload}
+                              onCancel={handleCancel}
+                              onDelete={onDelete}
+                            />
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  </section>
+                );
+              })}
+            </div>
+          )}
+          {/* [END] */}
+
           {/* Search input */}
           <input
             type="search"
@@ -269,7 +385,6 @@ function HfDownloadSection({ installedRepoIds, ports, onDownloadDone }: HfDownlo
               {results.map((r) => {
                 const installed = installedRepoIds.has(r.repo_id);
                 const task = tasks[r.repo_id] ?? null;
-                const isRunning = task && (task.status === "pending" || task.status === "downloading");
                 const isDone = task && task.status === "done";
                 const isErr = task && task.status === "error";
 
@@ -300,16 +415,8 @@ function HfDownloadSection({ installedRepoIds, ports, onDownloadDone }: HfDownlo
                       </div>
                     </div>
 
-                    {/* Action button */}
-                    {installed || isDone ? (
-                      <span className="text-[11px] text-ovo-muted shrink-0">
-                        {t("models.download.installed")}
-                      </span>
-                    ) : isRunning ? (
-                      <span className="text-[11px] text-ovo-muted shrink-0 animate-pulse">
-                        {t("models.download.downloading")}
-                      </span>
-                    ) : isErr ? (
+                    {/* Action area — shared cell shows progress / cancel / delete */}
+                    {isErr ? (
                       <button
                         type="button"
                         onClick={() => handleRetry(r.repo_id)}
@@ -318,13 +425,14 @@ function HfDownloadSection({ installedRepoIds, ports, onDownloadDone }: HfDownlo
                         {t("common.retry")}
                       </button>
                     ) : (
-                      <button
-                        type="button"
-                        onClick={() => handleDownload(r.repo_id)}
-                        className="text-[11px] px-2 py-1 rounded bg-ovo-accent text-white hover:opacity-90 shrink-0 transition"
-                      >
-                        {t("models.download.download_btn")}
-                      </button>
+                      <DownloadCell
+                        repoId={r.repo_id}
+                        task={task ?? undefined}
+                        already={installed || Boolean(isDone)}
+                        onDownload={handleDownload}
+                        onCancel={handleCancel}
+                        onDelete={onDelete}
+                      />
                     )}
                   </li>
                 );
@@ -362,6 +470,12 @@ export function ModelsPane() {
   // [END]
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // [START] Phase 7 — active tab for general / image model split
+  const [activeTab, setActiveTab] = useState<"general" | "image">("general");
+  // Set of repo_ids currently being deleted (rmtree can take seconds on big
+  // models — UI dims the row + spins the trash icon so the click registers).
+  const [deleting, setDeleting] = useState<Set<string>>(new Set());
+  // [END]
 
   function refreshModels() {
     if (status.health !== "healthy") return;
@@ -378,6 +492,39 @@ export function ModelsPane() {
         setLoading(false);
       });
   }
+
+  // [START] Phase 7 — force-delete model (HF + LM Studio). Confirm dialog,
+  // then refreshes the list so the row disappears on success.
+  async function handleDeleteModel(repoId: string) {
+    if (!window.confirm(t("models.download.confirm_delete", { repo: repoId }))) return;
+    // [START] Phase 7 — immediate visual feedback while rmtree runs.
+    setDeleting((prev) => new Set(prev).add(repoId));
+    useToastsStore.getState().push({
+      kind: "info",
+      message: t("models.download.delete_progress", { repo: repoId }),
+    });
+    try {
+      await deleteModel(repoId, true, status.ports);
+      useToastsStore.getState().push({
+        kind: "info",
+        message: t("models.download.delete_done", { repo: repoId }),
+      });
+      refreshModels();
+    } catch (e) {
+      useToastsStore.getState().push({
+        kind: "error",
+        message: e instanceof Error ? e.message : String(e),
+      });
+    } finally {
+      setDeleting((prev) => {
+        const next = new Set(prev);
+        next.delete(repoId);
+        return next;
+      });
+    }
+    // [END]
+  }
+  // [END]
 
   useEffect(() => {
     if (status.health !== "healthy") return;
@@ -421,6 +568,14 @@ export function ModelsPane() {
 
   const installedRepoIds = new Set(models.map((m) => m.repo_id));
 
+  // [START] Phase 7 — split models by tab (general LLM vs image-gen).
+  // `filteredModels` drives the installed list + recommendations row; the
+  // HF search + curated catalog are also swapped per tab.
+  const imageModels = models.filter(isImageGenModel);
+  const chatModels = models.filter(isChatCapableModel);
+  const filteredModels = activeTab === "image" ? imageModels : chatModels;
+  // [END]
+
   // [START] Recommendations — compute top models per dimension using perf stats
   const rankedModels = models.filter((m) => (perfStats[m.repo_id]?.runs ?? 0) >= 1);
   const fastest = rankedModels.reduce<OvoModel | null>((best, m) => {
@@ -452,21 +607,54 @@ export function ModelsPane() {
 
   return (
     <div className="h-full overflow-y-auto p-6">
-      <div className="flex items-baseline justify-between mb-4">
+      <div className="flex items-baseline justify-between mb-3">
         <h2 className="text-lg font-semibold text-ovo-text">{t("models.title")}</h2>
-        <span className="text-xs text-ovo-muted">{t("models.count", { count: models.length })}</span>
+        <span className="text-xs text-ovo-muted">
+          {t("models.count", { count: filteredModels.length })}
+        </span>
       </div>
 
-      {/* [START] HF Download section — always rendered at the top when healthy */}
+      {/* [START] Phase 7 — general/image tab switcher */}
+      <div className="inline-flex rounded-md border border-ovo-border bg-ovo-surface p-0.5 mb-4">
+        {(["general", "image"] as const).map((tab) => (
+          <button
+            key={tab}
+            type="button"
+            onClick={() => setActiveTab(tab)}
+            className={`px-3 py-1 text-xs rounded transition ${
+              activeTab === tab
+                ? "bg-ovo-accent text-ovo-accent-ink"
+                : "text-ovo-muted hover:text-ovo-text"
+            }`}
+          >
+            {t(`models.tab_${tab}`)}
+            <span className="ml-1 font-mono tabular-nums text-[10px] opacity-70">
+              {tab === "image" ? imageModels.length : chatModels.length}
+            </span>
+          </button>
+        ))}
+      </div>
+      {/* [END] */}
+
+      {/* [START] Phase 8 — Fit overview moved to dedicated Fit pane.
+          ModelsPane now focuses on install-management only (downloads,
+          deletion, raw HF catalog). Hardware Fit + recommendations live
+          under the Fit tab. */}
+      {/* [END] */}
+
+      {/* [START] HF Download section — kind + catalog swap per tab */}
       <HfDownloadSection
         installedRepoIds={installedRepoIds}
         ports={status.ports}
         onDownloadDone={refreshModels}
+        onDelete={handleDeleteModel}
+        kind={activeTab === "image" ? "image" : "mlx"}
+        catalog={activeTab === "image" ? IMAGE_MODEL_CATALOG : undefined}
       />
       {/* [END] */}
 
-      {/* [START] Recommendations row — only rendered if at least one model has perf data */}
-      {recs.length > 0 && (
+      {/* [START] Recommendations row — LLM perf only; hidden on image tab */}
+      {activeTab === "general" && recs.length > 0 && (
         <div className="mb-4 grid grid-cols-1 md:grid-cols-3 gap-2">
           {recs.map((r) =>
             r.model ? (
@@ -494,19 +682,24 @@ export function ModelsPane() {
       )}
       {/* [END] */}
 
-      {models.length === 0 ? (
+      {filteredModels.length === 0 ? (
         <div className="flex items-center justify-center text-sm text-ovo-muted py-8">
           {t("models.empty")}
         </div>
       ) : (
         <ul className="grid gap-2">
-          {models.map((m) => {
+          {filteredModels.map((m) => {
             const agg = perfStats[m.repo_id] ?? null;
+            const isDeleting = deleting.has(m.repo_id);
             return (
             <li
               key={`${m.source}:${m.repo_id}:${m.revision}`}
-              onClick={() => void mountModel(m.repo_id)}
-              className="p-3 rounded-lg bg-ovo-surface border border-ovo-border flex items-center gap-4 cursor-pointer hover:bg-ovo-surface-solid transition"
+              onClick={() => !isDeleting && void mountModel(m.repo_id)}
+              className={`p-3 rounded-lg bg-ovo-surface border border-ovo-border flex items-center gap-4 transition ${
+                isDeleting
+                  ? "opacity-50 cursor-wait"
+                  : "cursor-pointer hover:bg-ovo-surface-solid"
+              }`}
             >
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
@@ -523,6 +716,13 @@ export function ModelsPane() {
                       🎧 {t("models.capability.audio")}
                     </span>
                   )}
+                  {/* [START] Phase 7 — image generation badge */}
+                  {m.capabilities?.includes("image_gen") && (
+                    <span className="px-1.5 py-0.5 rounded text-[10px] bg-amber-500/15 text-amber-400 border border-amber-500/30 shrink-0">
+                      🎨 {t("models.capability.image_gen")}
+                    </span>
+                  )}
+                  {/* [END] */}
                   {/* [END] */}
                 </div>
                 <div className="text-[11px] text-ovo-muted mt-0.5 flex gap-3 flex-wrap">
@@ -553,6 +753,24 @@ export function ModelsPane() {
               <div className="text-xs text-ovo-muted tabular-nums shrink-0">
                 {formatSize(m.size_bytes)}
               </div>
+              {/* [START] Phase 7 — delete installed model */}
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (!isDeleting) void handleDeleteModel(m.repo_id);
+                }}
+                disabled={isDeleting}
+                className="p-1 rounded bg-transparent text-ovo-muted hover:bg-rose-500 hover:text-white transition shrink-0 disabled:opacity-40"
+                title={t("models.download.delete_btn")}
+              >
+                {isDeleting ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" aria-hidden />
+                ) : (
+                  <Trash2 className="w-3.5 h-3.5" aria-hidden />
+                )}
+              </button>
+              {/* [END] */}
             </li>
             );
           })}

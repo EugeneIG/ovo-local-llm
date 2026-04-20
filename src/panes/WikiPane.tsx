@@ -1,9 +1,94 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { BookOpen, Plus, Trash2, Pin, Search } from "lucide-react";
+import { BookOpen, Plus, Trash2, Pin, Search, Archive, ArchiveRestore, FileWarning, Link2 } from "lucide-react";
 import { useWikiStore } from "../store/wiki";
-import type { WikiPage, WikiTier } from "../db/wiki";
-import { WIKI_TIERS } from "../db/wiki";
+import type { BacklinkHit, WikiPage, WikiTier } from "../db/wiki";
+import { WIKI_TIERS, getBacklinks } from "../db/wiki";
+import { WikiLintModal } from "../components/WikiLintModal";
+
+// [START] Phase 8 — TagChipRow: editable tag chips below the editor header.
+// `#snippet` here makes the page surface as a slash-command template too.
+interface TagChipRowProps {
+  page: WikiPage;
+  onChange: (tags: string[]) => void;
+}
+
+function TagChipRow({ page, onChange }: TagChipRowProps) {
+  const { t } = useTranslation();
+  const [input, setInput] = useState("");
+
+  function commit(raw: string) {
+    const clean = raw
+      .split(/[,\s]+/)
+      .map((s) => s.trim().replace(/^#+/, "").toLowerCase())
+      .filter((s) => s.length > 0 && s.length <= 32);
+    if (clean.length === 0) return;
+    const merged = Array.from(new Set([...page.tags, ...clean]));
+    if (merged.length === page.tags.length) return;
+    onChange(merged);
+    setInput("");
+  }
+
+  function remove(tag: string) {
+    onChange(page.tags.filter((x) => x !== tag));
+  }
+
+  return (
+    <div className="flex flex-wrap items-center gap-1.5 px-4 py-2 border-b border-ovo-border bg-ovo-surface">
+      {page.tags.length === 0 && (
+        <span className="text-[11px] text-ovo-muted/70 italic mr-1">
+          {t("wiki.tags.empty_hint")}
+        </span>
+      )}
+      {page.tags.map((tag) => {
+        const isSnippet = tag.toLowerCase() === "snippet";
+        return (
+          <span
+            key={tag}
+            className={`inline-flex items-center gap-1 px-2 py-0.5 text-[11px] rounded-full border transition ${
+              isSnippet
+                ? "bg-emerald-500/10 border-emerald-500/40 text-emerald-600 dark:text-emerald-300"
+                : "bg-ovo-chip border-ovo-border text-ovo-text"
+            }`}
+            title={isSnippet ? t("wiki.tags.snippet_hint") : undefined}
+          >
+            {isSnippet && <span aria-hidden>📋</span>}
+            <span>#{tag}</span>
+            <button
+              type="button"
+              onClick={() => remove(tag)}
+              className="text-ovo-muted hover:text-rose-500 transition"
+              aria-label={t("wiki.tags.remove", { tag })}
+            >
+              ×
+            </button>
+          </span>
+        );
+      })}
+      <input
+        type="text"
+        value={input}
+        onChange={(e) => setInput(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === ",") {
+            e.preventDefault();
+            commit(input);
+          } else if (e.key === "Backspace" && input === "" && page.tags.length > 0) {
+            e.preventDefault();
+            remove(page.tags[page.tags.length - 1]);
+          }
+        }}
+        onBlur={() => {
+          if (input.trim()) commit(input);
+        }}
+        placeholder={t("wiki.tags.add_placeholder")}
+        className="flex-1 min-w-[120px] bg-transparent border-0 text-[12px] text-ovo-text placeholder:text-ovo-muted/50 focus:outline-none"
+        maxLength={48}
+      />
+    </div>
+  );
+}
+// [END]
 
 // [START] Phase 6.4 — Wiki tier metadata (emoji + visual colour tokens).
 // Canonical reads as the most trusted, casebook as distilled patterns, note
@@ -27,7 +112,10 @@ export function WikiPane() {
   const create = useWikiStore((s) => s.create);
   const update = useWikiStore((s) => s.update);
   const remove = useWikiStore((s) => s.remove);
+  const archive = useWikiStore((s) => s.archive);
   const search = useWikiStore((s) => s.search);
+  const showArchived = useWikiStore((s) => s.showArchived);
+  const setShowArchived = useWikiStore((s) => s.setShowArchived);
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [query, setQuery] = useState("");
@@ -35,6 +123,10 @@ export function WikiPane() {
   const [draftTitle, setDraftTitle] = useState("");
   const [draftContent, setDraftContent] = useState("");
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // [START] Phase 8 — lint modal + backlinks panel state
+  const [lintOpen, setLintOpen] = useState(false);
+  const [backlinks, setBacklinks] = useState<BacklinkHit[]>([]);
+  // [END]
 
   // [START] initial load
   useEffect(() => {
@@ -73,6 +165,24 @@ export function WikiPane() {
       setDraftContent("");
     }
   }, [selected?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  // [END]
+
+  // [START] Phase 8 — refresh backlinks when the selected page changes
+  useEffect(() => {
+    if (!selected) {
+      setBacklinks([]);
+      return;
+    }
+    let cancelled = false;
+    void getBacklinks(selected.slug).then((hits) => {
+      if (cancelled) return;
+      // Filter out self-references
+      setBacklinks(hits.filter((h) => h.page.id !== selected.id));
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [selected?.id, selected?.slug]); // eslint-disable-line react-hooks/exhaustive-deps
   // [END]
 
   // [START] debounced auto-save of title/content edits
@@ -117,6 +227,15 @@ export function WikiPane() {
     await update(selected.id, { pinned: !selected.pinned });
   }
 
+  async function toggleArchive() {
+    if (!selected) return;
+    await archive(selected.id, !selected.archived);
+    if (!showArchived && !selected.archived) {
+      // Archived page just dropped out of the visible list — clear selection
+      setSelectedId(null);
+    }
+  }
+
   return (
     <div className="h-full flex">
       {/* [START] left column — search + page list */}
@@ -125,6 +244,15 @@ export function WikiPane() {
           <div className="flex items-center gap-2">
             <BookOpen className="w-4 h-4 text-ovo-muted" aria-hidden />
             <h2 className="text-sm font-semibold text-ovo-text flex-1">{t("wiki.title")}</h2>
+            <button
+              type="button"
+              onClick={() => setLintOpen(true)}
+              title={t("wiki.lint.button")}
+              aria-label={t("wiki.lint.button")}
+              className="p-1 rounded hover:bg-ovo-surface-solid text-ovo-muted hover:text-ovo-text transition"
+            >
+              <FileWarning className="w-4 h-4" aria-hidden />
+            </button>
             <button
               type="button"
               onClick={() => void handleCreate()}
@@ -145,6 +273,15 @@ export function WikiPane() {
               className="flex-1 bg-transparent border-0 text-xs text-ovo-text placeholder:text-ovo-muted/60 focus:outline-none"
             />
           </label>
+          <label className="flex items-center gap-1.5 text-[10px] text-ovo-muted cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={showArchived}
+              onChange={(e) => void setShowArchived(e.target.checked)}
+              className="accent-ovo-accent"
+            />
+            <span>{t("wiki.show_archived")}</span>
+          </label>
         </div>
         <ul className="flex-1 overflow-y-auto">
           {visible.length === 0 ? (
@@ -161,7 +298,7 @@ export function WikiPane() {
                     selectedId === p.id
                       ? "bg-ovo-nav-active border-ovo-accent text-ovo-text"
                       : "border-transparent text-ovo-muted hover:bg-ovo-nav-active-hover hover:text-ovo-text"
-                  }`}
+                  } ${p.archived ? "opacity-50" : ""}`}
                 >
                   <div className="flex items-center gap-1.5">
                     <span
@@ -172,6 +309,9 @@ export function WikiPane() {
                       {TIER_META[p.tier].emoji}
                     </span>
                     {p.pinned && <Pin className="w-3 h-3 text-ovo-accent shrink-0" aria-hidden />}
+                    {p.archived && (
+                      <Archive className="w-3 h-3 text-amber-500 shrink-0" aria-hidden />
+                    )}
                     <span className="font-medium truncate">{p.title || t("wiki.untitled")}</span>
                   </div>
                   {p.tags.length > 0 && (
@@ -252,6 +392,23 @@ export function WikiPane() {
               </button>
               <button
                 type="button"
+                onClick={() => void toggleArchive()}
+                title={selected.archived ? t("wiki.unarchive") : t("wiki.archive")}
+                aria-label={selected.archived ? t("wiki.unarchive") : t("wiki.archive")}
+                className={`p-1.5 rounded transition ${
+                  selected.archived
+                    ? "text-amber-500 bg-amber-500/10"
+                    : "text-ovo-muted hover:text-ovo-text hover:bg-ovo-surface-solid"
+                }`}
+              >
+                {selected.archived ? (
+                  <ArchiveRestore className="w-4 h-4" aria-hidden />
+                ) : (
+                  <Archive className="w-4 h-4" aria-hidden />
+                )}
+              </button>
+              <button
+                type="button"
                 onClick={() => void handleDelete()}
                 title={t("wiki.delete")}
                 aria-label={t("wiki.delete")}
@@ -260,6 +417,10 @@ export function WikiPane() {
                 <Trash2 className="w-4 h-4" aria-hidden />
               </button>
             </header>
+            <TagChipRow
+              page={selected}
+              onChange={(tags) => void update(selected.id, { tags })}
+            />
             <textarea
               value={draftContent}
               onChange={(e) => setDraftContent(e.target.value)}
@@ -267,6 +428,35 @@ export function WikiPane() {
               spellCheck={false}
               className="flex-1 w-full resize-none px-4 py-4 text-sm font-mono bg-ovo-bg text-ovo-text placeholder:text-ovo-muted/60 focus:outline-none leading-relaxed"
             />
+            {backlinks.length > 0 && (
+              <div className="px-4 py-2 border-t border-ovo-border bg-ovo-surface">
+                <div className="flex items-center gap-1.5 text-[11px] text-ovo-muted mb-1">
+                  <Link2 className="w-3 h-3" aria-hidden />
+                  <span>
+                    {t("wiki.backlinks.heading", { count: backlinks.length })}
+                  </span>
+                </div>
+                <ul className="flex flex-wrap gap-1.5">
+                  {backlinks.map(({ page, count }) => (
+                    <li key={page.id}>
+                      <button
+                        type="button"
+                        onClick={() => setSelectedId(page.id)}
+                        title={page.title}
+                        className="inline-flex items-center gap-1 px-2 py-0.5 text-[11px] rounded-full bg-ovo-chip border border-ovo-border text-ovo-text hover:bg-ovo-bg/40 transition truncate max-w-xs"
+                      >
+                        <span className="truncate">{page.title || page.slug}</span>
+                        {count > 1 && (
+                          <span className="text-[10px] font-mono tabular-nums text-ovo-muted">
+                            ×{count}
+                          </span>
+                        )}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
             <footer className="px-4 py-2 border-t border-ovo-border text-[11px] text-ovo-muted">
               {t("wiki.auto_saved", { slug: selected.slug })}
             </footer>
@@ -278,6 +468,14 @@ export function WikiPane() {
           </div>
         )}
       </main>
+      {/* [END] */}
+
+      {/* [START] Phase 8 — Wiki lint modal */}
+      <WikiLintModal
+        open={lintOpen}
+        onClose={() => setLintOpen(false)}
+        onJump={(id) => setSelectedId(id)}
+      />
       {/* [END] */}
     </div>
   );

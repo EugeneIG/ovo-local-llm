@@ -1,6 +1,6 @@
-import { forwardRef, useEffect, useImperativeHandle, useRef, useState, type ChangeEvent, type KeyboardEvent, type ReactNode } from "react";
+import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState, type ChangeEvent, type KeyboardEvent, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import { Send, Square, Plus, Upload, Link as LinkIcon } from "lucide-react";
+import { Send, Square, Plus, Upload, Link as LinkIcon, Mic, MicOff, Loader2 } from "lucide-react";
 import type { ChatAttachment, ModelCapability } from "../types/ovo";
 import { AttachmentChip } from "./AttachmentChip";
 // [START] Phase 6.4 — slash command popup
@@ -16,6 +16,19 @@ import { useModelProfilesStore } from "../store/model_profiles";
 import { useToastsStore } from "../store/toasts";
 import { runCompact } from "../lib/compact";
 import { useWikiStore } from "../store/wiki";
+import { buildSnippetCommands } from "../lib/wikiSnippets";
+// [END]
+// [START] Phase 8 — model recommendation chip
+import { recommendModel, type RecommendationResult } from "../lib/modelRecommendation";
+import { useFeatureFlagsStore } from "../store/feature_flags";
+import { useModelPerfStore } from "../store/model_perf";
+import { useSidecarStore } from "../store/sidecar";
+import { listModels } from "../lib/api";
+import type { OvoModel } from "../types/ovo";
+import { Sparkles } from "lucide-react";
+// [END]
+// [START] Phase 8 — Voice I/O
+import { startRecording, stopRecordingAndTranscribe, cancelRecording } from "../lib/voiceIO";
 // [END]
 
 interface Props {
@@ -118,6 +131,107 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput(
   const [slashFiltered, setSlashFiltered] = useState<SlashCommand[]>([]);
   const [slashIndex, setSlashIndex] = useState(0);
   const slashOpen = slashFiltered.length > 0;
+  // [START] Phase 8 — wiki #snippet pages join the slash catalog
+  const wikiPages = useWikiStore((s) => s.pages);
+  // [END]
+
+  // [START] Phase 8 — model recommendation: debounced suggestion chip
+  const enableRec = useFeatureFlagsStore((s) => s.enable_model_recommendation);
+  const ports = useSidecarStore((s) => s.status.ports);
+  const perfStats = useModelPerfStore((s) => s.stats);
+  const [models, setModels] = useState<OvoModel[]>([]);
+  const [recommendation, setRecommendation] = useState<RecommendationResult | null>(null);
+  const modelsFetchedRef = useRef(false);
+
+  // Lazy-load model catalog once per ChatInput mount; refresh when ports change.
+  useEffect(() => {
+    if (!enableRec) return;
+    if (modelsFetchedRef.current) return;
+    modelsFetchedRef.current = true;
+    listModels(ports)
+      .then((res) => setModels(res.models))
+      .catch(() => {
+        modelsFetchedRef.current = false;
+      });
+  }, [enableRec, ports]);
+
+  // Recompute recommendation 350ms after the user stops typing
+  useEffect(() => {
+    if (!enableRec || models.length === 0) {
+      setRecommendation(null);
+      return;
+    }
+    const handle = setTimeout(() => {
+      const currentRef =
+        useSessionsStore.getState().sessions.find(
+          (s) => s.id === useSessionsStore.getState().currentSessionId,
+        )?.model_ref ?? null;
+      const result = recommendModel({
+        prompt: value,
+        attachments,
+        models,
+        currentModelRef: currentRef,
+        perfStats,
+      });
+      setRecommendation(result);
+    }, 350);
+    return () => clearTimeout(handle);
+  }, [enableRec, value, attachments, models, perfStats]);
+
+  function applyRecommendation() {
+    if (!recommendation) return;
+    const sid = useSessionsStore.getState().currentSessionId;
+    if (!sid) return;
+    void useSessionsStore.getState().setSessionModel(sid, recommendation.model.repo_id);
+    setRecommendation(null);
+  }
+
+  function dismissRecommendation() {
+    setRecommendation(null);
+  }
+  // [END]
+
+  // [START] Phase 8 — Voice I/O state + handler
+  const enableVoice = useFeatureFlagsStore((s) => s.enable_voice_input);
+  const [voiceState, setVoiceState] = useState<"idle" | "recording" | "processing">("idle");
+
+  async function handleMicClick() {
+    if (voiceState === "recording") {
+      setVoiceState("processing");
+      try {
+        const transcript = await stopRecordingAndTranscribe(ports);
+        if (transcript) {
+          setValue((prev) => (prev ? `${prev} ${transcript}` : transcript));
+        }
+      } catch (err) {
+        useToastsStore.getState().push({
+          kind: "error",
+          message: t("chat.voice.error", { error: err instanceof Error ? err.message : String(err) }),
+        });
+      } finally {
+        setVoiceState("idle");
+      }
+    } else if (voiceState === "idle") {
+      try {
+        await startRecording(ports);
+        setVoiceState("recording");
+      } catch (err) {
+        useToastsStore.getState().push({
+          kind: "error",
+          message: t("chat.voice.error", { error: err instanceof Error ? err.message : String(err) }),
+        });
+      }
+    }
+  }
+
+  // Cancel recording when component unmounts or streaming starts.
+  useEffect(() => {
+    if (streaming && voiceState !== "idle") {
+      cancelRecording(ports);
+      setVoiceState("idle");
+    }
+  }, [streaming]);
+  // [END]
 
   useEffect(() => {
     const { show, token } = shouldShowSlashMenu(value);
@@ -125,10 +239,20 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput(
       setSlashFiltered([]);
       return;
     }
-    const next = filterSlashCommands(token);
+    const builtin = filterSlashCommands(token);
+    // [START] Phase 8 — append wiki snippets that prefix-match the token
+    const needle = token.trim().toLowerCase();
+    const snippets = buildSnippetCommands(wikiPages).filter((c) => {
+      if (!needle) return true;
+      if (c.id.toLowerCase().startsWith(needle)) return true;
+      if (c.aliases?.some((a) => a.toLowerCase().startsWith(needle))) return true;
+      return false;
+    });
+    const next = [...builtin, ...snippets];
+    // [END]
     setSlashFiltered(next);
     setSlashIndex((prev) => Math.min(prev, Math.max(0, next.length - 1)));
-  }, [value]);
+  }, [value, wikiPages]);
 
   function buildSlashContext(): SlashCommandContext {
     return {
@@ -209,6 +333,27 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput(
   }
   // [END]
 
+  // [START] Phase 8 — ↑/↓ recall prior user turns in this session.
+  // Only fires when the slash menu is closed and the caret is at an edge,
+  // so regular multi-line navigation inside a composed message still
+  // works. Cleared automatically when the user types something new.
+  const chatMessages = useSessionsStore((s) => s.messages);
+  const userHistory = useMemo(
+    () =>
+      chatMessages
+        .filter((m) => m.role === "user")
+        .map((m) => (typeof m.content === "string" ? m.content : ""))
+        .filter((c) => c.length > 0),
+    [chatMessages],
+  );
+  const [historyIdx, setHistoryIdx] = useState(-1);
+  useEffect(() => {
+    if (historyIdx !== -1 && value !== (userHistory[userHistory.length - 1 - historyIdx] ?? "")) {
+      setHistoryIdx(-1);
+    }
+  }, [value, historyIdx, userHistory]);
+  // [END]
+
   const onKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
     // [START] slash-menu keyboard nav takes priority over submit
     if (slashOpen) {
@@ -237,6 +382,43 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput(
       }
     }
     // [END]
+
+    // [START] Phase 8 — arrow-key history recall (slash menu takes priority above).
+    if (userHistory.length > 0 && !slashOpen) {
+      const el = e.currentTarget;
+      const caretAtStart = el.selectionStart === 0 && el.selectionEnd === 0;
+      const caretAtEnd =
+        el.selectionStart === el.value.length && el.selectionEnd === el.value.length;
+
+      if (e.key === "ArrowUp" && (value === "" || caretAtStart)) {
+        const nextIdx = Math.min(historyIdx + 1, userHistory.length - 1);
+        if (nextIdx !== historyIdx) {
+          e.preventDefault();
+          setHistoryIdx(nextIdx);
+          setValue(userHistory[userHistory.length - 1 - nextIdx] ?? "");
+          return;
+        }
+      }
+      if (
+        e.key === "ArrowDown" &&
+        historyIdx >= 0 &&
+        (value === "" || caretAtEnd || value === userHistory[userHistory.length - 1 - historyIdx])
+      ) {
+        if (historyIdx === 0) {
+          e.preventDefault();
+          setHistoryIdx(-1);
+          setValue("");
+          return;
+        }
+        const nextIdx = historyIdx - 1;
+        e.preventDefault();
+        setHistoryIdx(nextIdx);
+        setValue(userHistory[userHistory.length - 1 - nextIdx] ?? "");
+        return;
+      }
+    }
+    // [END]
+
     if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
       e.preventDefault();
       submit();
@@ -327,6 +509,38 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput(
           ))}
         </div>
       )}
+      {/* [START] Phase 8 — model recommendation chip */}
+      {recommendation && (
+        <div className="mb-2 inline-flex items-center gap-2 px-2.5 py-1 rounded-full bg-violet-500/10 border border-violet-400/40 text-[11px] text-violet-700 dark:text-violet-200">
+          <Sparkles className="w-3 h-3 shrink-0" aria-hidden />
+          <span className="font-medium">
+            {t("chat.recommend.label", {
+              name: recommendation.model.repo_id.split("/").pop() ?? recommendation.model.repo_id,
+            })}
+          </span>
+          {recommendation.reasons.length > 0 && (
+            <span className="text-violet-500/80 truncate max-w-xs">
+              · {recommendation.reasons.slice(0, 3).join(", ")}
+            </span>
+          )}
+          <button
+            type="button"
+            onClick={applyRecommendation}
+            className="ml-1 px-2 py-0.5 rounded-full bg-violet-500 text-white text-[10px] font-semibold hover:bg-violet-600 transition"
+          >
+            {t("chat.recommend.apply")}
+          </button>
+          <button
+            type="button"
+            onClick={dismissRecommendation}
+            aria-label={t("chat.recommend.dismiss")}
+            className="text-violet-500/70 hover:text-violet-700 dark:hover:text-violet-100 transition"
+          >
+            ×
+          </button>
+        </div>
+      )}
+      {/* [END] */}
       <div className="flex items-end gap-2">
         {leftSlot}
         <div ref={menuRef} className="relative shrink-0">
@@ -411,16 +625,54 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput(
             {t("chat.stop")}
           </button>
         ) : (
-          <button
-            type="button"
-            onClick={submit}
-            disabled={!canSubmit}
-            aria-label={t("chat.send")}
-            className="h-[40px] px-3 rounded-lg bg-ovo-accent hover:bg-ovo-accent-hover disabled:opacity-40 disabled:cursor-not-allowed text-ovo-accent-ink text-sm flex items-center gap-1.5 transition"
-          >
-            <Send className="w-3.5 h-3.5" aria-hidden />
-            {t("chat.send")}
-          </button>
+          <>
+            {/* [START] Phase 8 — Mic button (voice input) */}
+            {enableVoice && (
+              <button
+                type="button"
+                onClick={() => void handleMicClick()}
+                disabled={voiceState === "processing"}
+                aria-label={
+                  voiceState === "recording"
+                    ? t("chat.voice.recording")
+                    : t("chat.voice.start")
+                }
+                title={
+                  voiceState === "processing"
+                    ? t("chat.voice.processing")
+                    : voiceState === "recording"
+                      ? t("chat.voice.recording")
+                      : t("chat.voice.start")
+                }
+                className={`h-[40px] px-2.5 rounded-lg text-sm flex items-center transition ${
+                  voiceState === "recording"
+                    ? "bg-rose-500 hover:bg-rose-600 text-white animate-pulse"
+                    : voiceState === "processing"
+                      ? "bg-ovo-surface-solid text-ovo-muted cursor-not-allowed opacity-60"
+                      : "bg-ovo-surface-solid border border-ovo-border text-ovo-muted hover:text-ovo-text hover:border-ovo-accent"
+                }`}
+              >
+                {voiceState === "processing" ? (
+                  <Loader2 className="w-4 h-4 animate-spin" aria-hidden />
+                ) : voiceState === "recording" ? (
+                  <MicOff className="w-4 h-4" aria-hidden />
+                ) : (
+                  <Mic className="w-4 h-4" aria-hidden />
+                )}
+              </button>
+            )}
+            {/* [END] */}
+            <button
+              type="button"
+              onClick={submit}
+              disabled={!canSubmit}
+              aria-label={t("chat.send")}
+              className="h-[40px] px-3 rounded-lg bg-ovo-accent hover:bg-ovo-accent-hover disabled:opacity-40 disabled:cursor-not-allowed text-ovo-accent-ink text-sm flex items-center gap-1.5 transition"
+            >
+              <Send className="w-3.5 h-3.5" aria-hidden />
+              {t("chat.send")}
+            </button>
+          </>
         )}
       </div>
     </div>

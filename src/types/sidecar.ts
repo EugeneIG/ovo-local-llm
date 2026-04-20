@@ -1,4 +1,9 @@
-export type SidecarHealth = "stopped" | "starting" | "healthy" | "failed";
+export type SidecarHealth =
+  | "stopped"
+  | "bootstrapping"
+  | "starting"
+  | "healthy"
+  | "failed";
 
 export interface SidecarPorts {
   ollama: number;
@@ -12,4 +17,5 @@ export interface SidecarStatus {
   pid: number | null;
   message: string | null;
   healthy_apis: Array<"ollama" | "openai" | "native">;
+  bootstrap_progress: string | null;
 }

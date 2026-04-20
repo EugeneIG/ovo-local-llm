@@ -105,9 +105,13 @@ class MlxVlmRunner:
         self._active_cancel: threading.Event | None = None
         self._active_thread: threading.Thread | None = None
         # [END]
+        # [START] Stream serialization — prevents concurrent _astream calls from
+        # clobbering each other's _active_cancel / _active_thread handles.
+        self._stream_lock = asyncio.Lock()
+        # [END]
         from ovo_sidecar import model_lifecycle
 
-        model_lifecycle.register_unloader(self.unload)
+        model_lifecycle.register_unloader(self.unload, slot="llm")
 
     def unload(self) -> None:
         """Drop cached VLM model + force Metal cache release.
@@ -141,7 +145,7 @@ class MlxVlmRunner:
             self.unload()
             from ovo_sidecar import model_lifecycle
 
-            model_lifecycle.unload_others(skip=self.unload)
+            model_lifecycle.unload_others(skip=self.unload, slot="llm")
             # [END]
             logger.info("loading MLX-VLM model: %s", ref_str)
             loaded = await asyncio.to_thread(self._load, ref_str)
@@ -185,9 +189,14 @@ class MlxVlmRunner:
                 images.append(_decode_image(src))
 
         audios: list[str] = []
+        # [START] Track temp files from data-URL decoding for cleanup after stream.
+        tmp_audio_paths: list[str] = []
         for m in messages:
             for src in m.audios:
-                audios.append(_decode_audio(src))
+                path = _decode_audio(src)
+                audios.append(path)
+                if src.startswith("data:"):
+                    tmp_audio_paths.append(path)
         # [END]
 
         from mlx_vlm.prompt_utils import apply_chat_template
@@ -201,10 +210,25 @@ class MlxVlmRunner:
             num_audios=len(audios),
         )
 
-        async for chunk in self._astream(
-            loaded, formatted, images, audios, max_tokens, temperature, top_p, repetition_penalty,
-        ):
-            yield chunk
+        # [START] Cleanup temp audio files after stream completes.
+        # Cleanup runs after _astream returns, which waits for the worker thread
+        # to finish (via the queue sentinel + cancelled event), so the file is
+        # no longer being read by the time we unlink.
+        try:
+            async for chunk in self._astream(
+                loaded, formatted, images, audios, max_tokens, temperature, top_p, repetition_penalty,
+            ):
+                yield chunk
+        finally:
+            # Wait briefly for the worker to fully exit so it releases file handles.
+            if self._active_thread is not None and self._active_thread.is_alive():
+                self._active_thread.join(timeout=2.0)
+            for p in tmp_audio_paths:
+                try:
+                    Path(p).unlink(missing_ok=True)
+                except Exception:
+                    pass
+        # [END]
 
     # [START] Token counting — VLMs format the prompt with apply_chat_template
     # that injects image/audio placeholders; count AFTER formatting so the number
@@ -240,6 +264,26 @@ class MlxVlmRunner:
     # [END]
 
     async def _astream(
+        self,
+        loaded: LoadedVlmModel,
+        prompt: str,
+        images: list,
+        audios: list[str],
+        max_tokens: int,
+        temperature: float | None,
+        top_p: float | None,
+        repetition_penalty: float | None = None,
+    ) -> AsyncIterator[GenerationChunk]:
+        # [START] Serialize concurrent stream requests so _active_cancel /
+        # _active_thread are never clobbered by a second caller.
+        async with self._stream_lock:
+            async for chunk in self._astream_inner(
+                loaded, prompt, images, audios, max_tokens, temperature, top_p, repetition_penalty
+            ):
+                yield chunk
+        # [END]
+
+    async def _astream_inner(
         self,
         loaded: LoadedVlmModel,
         prompt: str,
@@ -286,6 +330,24 @@ class MlxVlmRunner:
                     kwargs["audio"] = audios if len(audios) > 1 else audios[0]
                 # [END]
 
+                # [START] Manual token counting — mlx-vlm's stream_generate
+                # doesn't report prompt_tokens / generation_tokens like mlx-lm.
+                # Count generation tokens by frame (1 token per chunk) and
+                # estimate prompt tokens from the formatted prompt length.
+                gen_token_count = 0
+                # Estimate prompt tokens via tokenizer if available
+                _prompt_tokens: int | None = None
+                try:
+                    tokenizer = getattr(loaded.processor, "tokenizer", None) or loaded.processor
+                    encode = getattr(tokenizer, "encode", None)
+                    if callable(encode):
+                        _prompt_tokens = len(encode(prompt))
+                except Exception:
+                    pass
+                if _prompt_tokens is None:
+                    _prompt_tokens = max(1, len(prompt) // 4)
+                # [END]
+
                 for chunk in stream_generate(
                     loaded.model, loaded.processor, prompt, images, **kwargs
                 ):
@@ -293,14 +355,17 @@ class MlxVlmRunner:
                         break
                     text = getattr(chunk, "text", "") or ""
                     finish = getattr(chunk, "finish_reason", None)
+                    gen_token_count += 1
+                    # [START] Prefer mlx-vlm's own counts if available, else use manual.
                     out = GenerationChunk(
                         text=text,
                         token=getattr(chunk, "token", None),
                         done=finish is not None,
                         finish_reason=finish,
-                        prompt_tokens=getattr(chunk, "prompt_tokens", None),
-                        generation_tokens=getattr(chunk, "generation_tokens", None),
+                        prompt_tokens=getattr(chunk, "prompt_tokens", None) or _prompt_tokens,
+                        generation_tokens=getattr(chunk, "generation_tokens", None) or gen_token_count,
                     )
+                    # [END]
                     if not safe_put(out):
                         break
             except BaseException as e:

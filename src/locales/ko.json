@@ -1,7 +1,7 @@
 {
   "app": {
     "name": "OVO",
-    "tagline": "로컬 MLX LLM 런타임"
+    "tagline": "All the LLMs. On device."
   },
   "nav": {
     "chat": "채팅",
@@ -9,12 +9,186 @@
     "image": "이미지",
     "wiki": "위키",
     "models": "모델",
+    "fit": "적합도",
     "settings": "설정",
     "about": "정보"
   },
+  "fit": {
+    "title": "하드웨어 적합도",
+    "subtitle": "내 PC에 맞는 모델을 한눈에"
+  },
   "code": {
     "title": "코드",
-    "coming_soon": "IDE 모드 — Phase 6에서 CLAUDE.md / AGENTS.md 기반 코드 작업 환경이 여기 붙어"
+    "coming_soon": "IDE 모드 — Phase 6에서 CLAUDE.md / AGENTS.md 기반 코드 작업 환경이 여기 붙어",
+    "open_folder": "폴더 열기",
+    "no_project": "코딩을 시작하려면 폴더를 여세요",
+    "select_file": "편집할 파일을 선택하세요",
+    "file_explorer": "탐색기",
+    "unsaved_changes": "저장되지 않은 변경",
+    "save": "저장",
+    "save_all": "모두 저장",
+    "new_file": "새 파일",
+    "new_folder": "새 폴더",
+    "rename": "이름 변경",
+    "delete": "삭제",
+    "delete_confirm": "{{name}}을(를) 삭제할까?",
+    "ctx": {
+      "open": "열기",
+      "refresh": "새로고침",
+      "theme": "코드 테마",
+      "add_file_to_chat": "에이전트 챗에 파일 추가",
+      "add_folder_to_chat": "에이전트 챗에 폴더 추가",
+      "reveal_in_finder": "Finder에 표시",
+      "copy_path": "경로 복사",
+      "copy_relative_path": "상대 경로 복사",
+      "open_terminal": "터미널에서 열기",
+      "rename": "이름 바꾸기",
+      "delete": "삭제",
+      "delete_confirm": "{{name}}을(를) 정말 삭제할까?",
+      "add_selection_to_chat": "선택 영역 에이전트 챗에 추가",
+      "explain_selection": "선택 영역 설명 요청",
+      "review_selection": "선택 영역 리뷰 요청",
+      "explain_prompt": "다음 코드를 설명해줘",
+      "review_prompt": "다음 코드 리뷰해줘. 버그 / 타입 안전성 / 네이밍 / 단순화 여부를 확인하고 수정 제안"
+    },
+    "recents": {
+      "title": "코드 세션",
+      "new": "새 세션",
+      "empty": "아직 코드 세션이 없어",
+      "search_placeholder": "세션 검색",
+      "pinned": "고정됨",
+      "recent": "최근"
+    },
+    "terminal": {
+      "title": "터미널",
+      "new": "새 터미널",
+      "kill": "터미널 종료"
+    },
+    "git": {
+      "title": "소스 제어",
+      "branch": "브랜치",
+      "staged": "스테이지된 변경",
+      "unstaged": "변경 사항",
+      "commit_placeholder": "커밋 메시지",
+      "commit": "커밋",
+      "commit_success": "커밋 완료",
+      "stage": "스테이지",
+      "unstage": "언스테이지",
+      "no_changes": "변경 사항 없음",
+      "refresh": "새로고침"
+    },
+    "search": {
+      "title": "검색",
+      "placeholder": "파일에서 검색...",
+      "match_case": "대소문자 구분",
+      "results": "{{files}}개 파일에서 {{count}}건",
+      "no_results": "결과 없음"
+    },
+    "agent": {
+      "title": "에이전트",
+      "placeholder": "에이전트에게 코드 수정을 요청하세요...",
+      "placeholder_queue": "다음 메시지를 큐에 추가...",
+      "send": "보내기",
+      "stop": "중지",
+      "no_model": "먼저 모델을 선택해",
+      "select_model": "모델 선택...",
+      "clear": "초기화",
+      "attach": "첨부",
+      "slash": "슬래시 명령",
+      "upload_from_computer": "컴퓨터에서 업로드",
+      "add_context": "컨텍스트 추가",
+      "browse_web": "웹 탐색",
+      "web_search_prompt": "검색어를 입력해:",
+      "slash_palette": {
+        "placeholder": "슬래시 커맨드 검색...",
+        "section_commands": "슬래시 커맨드",
+        "section_session": "세션",
+        "section_model": "모델",
+        "section_customize": "커스터마이즈",
+        "section_snippets": "스니펫",
+        "switch_model": "모델 변경...",
+        "cycle_tool_mode": "도구 모드 → {{next}}",
+        "open_tabs_hint": "열린 탭 {{count}}개",
+        "hint_clear": "대화 삭제",
+        "hint_mode": "{{mode}} 모드로 전환",
+        "current": "현재",
+        "none": "없음"
+      },
+      "coming_soon": "곧 지원돼",
+      "file_attached": "📎 {{name}} 첨부됨",
+      "queued": "{{count}}개 큐잉됨",
+      "selection": "{{lines}}줄 선택됨",
+      "no_selection": "선택 없음",
+      "empty": "뭐부터 시작해볼까?",
+      "todos": {
+        "title": "진행 중",
+        "pending": "대기",
+        "in_progress": "진행",
+        "completed": "완료"
+      },
+      "mode": {
+        "bypass": "자동 실행",
+        "ask": "매번 확인",
+        "plan": "계획만"
+      },
+      "approval": {
+        "title": "에이전트 작업 승인",
+        "subtitle": "{{tool}} 실행을 승인할까?",
+        "approve": "승인",
+        "reject": "거부",
+        "args": "파라미터"
+      }
+    },
+    "quick_open": {
+      "placeholder": "파일로 이동… (글자 입력해 필터)",
+      "count": "{{n}}개",
+      "no_results": "결과 없음",
+      "empty_tree": "파일을 찾으려면 입력해봐"
+    },
+    "settings": {
+      "title": "에디터 설정",
+      "tab_editor": "에디터",
+      "tab_ai": "AI 자동완성",
+      "font_size": "글꼴 크기",
+      "tab_size": "탭 크기",
+      "word_wrap": "자동 줄바꿈",
+      "wrap_off": "끔",
+      "wrap_on": "켬",
+      "minimap": "미니맵",
+      "line_numbers": "줄 번호",
+      "auto_save": "자동 저장",
+      "auto_save_off": "끔",
+      "auto_save_after_delay": "지연 후 저장",
+      "auto_save_focus": "포커스 변경 시",
+      "auto_save_delay": "지연",
+      "completion_enabled": "인라인 자동완성 활성화",
+      "completion_delay": "자동완성 지연",
+      "completion_hint": "FIM 고스트 텍스트는 현재 선택된 코드 세션 모델을 사용해. 코더 계열 MLX 모델(Qwen2.5-Coder / DeepSeek-Coder / StarCoder / CodeLlama)이 필요해.",
+      "tab_general": "일반",
+      "browser_preference": "자동 열기 브라우저",
+      "browser_default": "시스템 기본값",
+      "browser_custom": "직접 지정",
+      "browser_custom_app": "앱 이름",
+      "browser_hint": "에이전트가 `run_command`로 dev server(localhost:PORT)를 띄우면 여기 지정된 브라우저로 자동 열려.",
+      "reset": "기본값 복원",
+      "done": "완료"
+    },
+    "md_preview": {
+      "show": "마크다운 프리뷰 보기",
+      "hide": "마크다운 프리뷰 숨기기"
+    },
+    "inline_chat": {
+      "title": "인라인 챗",
+      "close": "닫기",
+      "placeholder": "이 코드를 어떻게 바꿀까? (Enter로 전송)",
+      "no_model": "먼저 에이전트 챗에서 모델을 선택해",
+      "hint": "Enter 전송 · Esc 취소 · 결과는 Cmd+Z로 되돌리기",
+      "generating": "생성 중…",
+      "generating_btn": "생성 중",
+      "submit": "적용",
+      "empty_response": "응답이 비어있어",
+      "selection_chars": "{{n}}자 선택됨"
+    }
   },
   "image": {
     "title": "이미지 생성",
@@ -25,6 +199,69 @@
       "unload": "이미지 모델을 로드하면 활성 채팅/코드 모델은 언로드돼 (통합 메모리 확보)",
       "download": "모델 탭에서 Draw Things 수준의 HF 카탈로그(SD 1.5 / SDXL / Flux / ControlNet / LoRA)를 받을 수 있어",
       "settings": "설정: 모델 · LoRA · 컨트롤 · 강도 · 시드 · 이미지 크기 · 단계 · 텍스트 가이드 · 샘플러 · 시프트 · 배치 · 프롬프트/네거티브"
+    },
+    "header": {
+      "browse_models": "HF 모델 찾기",
+      "catalog": "카탈로그",
+      "catalog_hint": "공식/커뮤니티 인기 모델 모음 — 버튼 하나로 설치",
+      "catalog_official": "공식 모델",
+      "catalog_community": "커뮤니티 파인튠",
+      "search_placeholder": "이미지 생성 모델 검색 (예: sdxl, flux, kandinsky)",
+      "search_btn": "검색",
+      "search_tip": "'text-to-image' 태그 붙은 HF 모델만 표시돼"
+    },
+    "prompt": {
+      "label": "프롬프트",
+      "placeholder": "어떤 이미지를 그릴까?",
+      "generate": "생성",
+      "stop": "중지",
+      "loading_model": "모델 로드 중: {{model}}"
+    },
+    "gallery": {
+      "title": "갤러리",
+      "empty": "아직 생성된 이미지가 없어",
+      "clear": "세션 비우기"
+    },
+    "ctx": {
+      "expand": "확대 보기",
+      "copy_path": "경로 복사",
+      "open_new_window": "새 창에서 열기",
+      "upscale": "4배 업스케일",
+      "upscale_started": "업스케일 시작 (모델 로드에 수 분 걸릴 수 있어)",
+      "upscale_done": "업스케일 완료 · {{w}}×{{h}}",
+      "delete": "삭제",
+      "path_copied": "경로를 클립보드에 복사했어"
+    },
+    "errors": {
+      "no_model": "이미지 생성 모델을 먼저 선택해줘",
+      "empty_prompt": "프롬프트를 입력해줘"
+    },
+    "settings": {
+      "title": "설정",
+      "style_preset": "스타일 프리셋",
+      "style_preset_hint": "SDXL 공식 스타일 — 프롬프트에 템플릿을 씌워서 원하는 미학을 강조해",
+      "negative_prompt": "네거티브 프롬프트",
+      "negative_placeholder": "피하고 싶은 요소 (예: blurry, low quality)",
+      "sampler": "샘플러",
+      "size": "이미지 크기",
+      "size_preset_placeholder": "프리셋 선택…",
+      "steps": "추론 단계",
+      "cfg_scale": "CFG 스케일",
+      "seed": "시드",
+      "seed_random": "랜덤",
+      "seed_clear": "랜덤",
+      "seed_random_btn": "랜덤 시드 생성",
+      "batch": "배치 크기",
+      "shift": "Shift (Flux 전용)",
+      "shift_off": "끄기 (모델 기본값 사용)",
+      "loras": "LoRA",
+      "lora_add": "+ 추가",
+      "lora_empty": "적용된 LoRA 없음",
+      "lora_path_placeholder": "LoRA safetensors 절대 경로",
+      "control_model": "ControlNet 모델 (선택)",
+      "control_model_placeholder": "예: diffusers/controlnet-canny-sdxl-1.0",
+      "control_strength": "Control 강도",
+      "control_hint": "Control 이미지가 설정될 때만 적용돼"
     }
   },
   "wiki": {
@@ -40,6 +277,9 @@
     "auto_saved": "자동 저장됨 · {{slug}}",
     "pin": "상단 고정",
     "unpin": "고정 해제",
+    "archive": "아카이브",
+    "unarchive": "아카이브 해제",
+    "show_archived": "아카이브 보기",
     "delete": "페이지 삭제",
     "delete_confirm": "\"{{title}}\" 페이지를 정말 삭제할까?",
     "tier": {
@@ -50,11 +290,34 @@
       "note_hint": "📝 원시 기록 · 거친 메모",
       "casebook_hint": "📚 정제된 패턴/교훈 · 여러 노트에서 승격",
       "canonical_hint": "🏛 프로젝트 정식 지식 · 채팅 주입 최우선"
+    },
+    "lint": {
+      "button": "Lint 실행",
+      "title": "Wiki Lint",
+      "rerun": "다시 실행",
+      "filter_all": "전체",
+      "cat_orphan": "백링크 없음",
+      "cat_stale": "오래됨",
+      "cat_oversized": "용량 초과",
+      "cat_duplicate": "제목 중복",
+      "empty_clean": "✨ 모든 페이지가 깨끗해 — 발견된 이슈 없음",
+      "empty_filter": "이 카테고리에는 이슈가 없어",
+      "error": "Lint 실패: {{error}}"
+    },
+    "backlinks": {
+      "heading": "백링크 {{count}}개"
+    },
+    "tags": {
+      "empty_hint": "태그 없음 — #snippet 추가하면 슬래시 커맨드로 노출돼",
+      "add_placeholder": "+ 태그 추가 (Enter)",
+      "remove": "{{tag}} 제거",
+      "snippet_hint": "이 페이지는 슬래시 템플릿으로 노출돼"
     }
   },
   "sidecar": {
     "status": {
       "stopped": "중지됨",
+      "bootstrapping": "런타임 설치 중",
       "starting": "시작 중",
       "healthy": "정상",
       "failed": "실패"
@@ -62,10 +325,45 @@
     "restart": "사이드카 재시작",
     "restarting": "재시작 중…",
     "start": "사이드카 시작",
+    "installing": "설치 중…",
+    "bootstrap": {
+      "title": "AI 런타임을 준비하고 있어 💕",
+      "body": "처음 실행이라 Python 환경과 모델 런타임을 설치할게. 1~5분 정도 걸려. 네트워크가 필요해.",
+      "preparing": "준비 중…",
+      "failed_title": "런타임 설치에 실패했어 😢",
+      "failed_body": "네트워크 문제거나 디스크 권한 문제일 수 있어. 다시 시도하거나 처음부터 재설치해봐.",
+      "retry": "다시 시도",
+      "reinstall": "처음부터 다시 설치"
+    },
+    "runtime": {
+      "label": "AI 런타임",
+      "description": "Python 환경과 MLX/Transformers 등 의존성",
+      "reinstall": "런타임 재설치",
+      "reinstall_hint": "venv를 지우고 처음부터 다시 받아 — 문제 생겼을 때만 써",
+      "reinstall_confirm": "정말 런타임을 재설치할까? 다시 받는 동안 (1~5분) 채팅이 잠시 꺼져.",
+      "reinstalling": "재설치 중…"
+    },
     "banner": {
       "stopped": "사이드카가 꺼져 있어. 왼쪽 아래 💾 버튼을 눌러 시작해줘",
       "failed": "사이드카 시작에 실패했어. 💾 버튼으로 다시 시도해",
       "starting": "사이드카를 시작하고 있어…"
+    },
+    "offline": {
+      "stopped_title": "사이드카가 꺼져 있어",
+      "stopped_body": "로컬 모델을 실행하려면 사이드카가 필요해. 시작 버튼을 눌러서 깨워줘.",
+      "starting_title": "사이드카 시작 중",
+      "starting_body": "FastAPI 3개 포트가 뜨는 중이야. 잠시만 기다려줘.",
+      "failed_title": "사이드카 시작 실패",
+      "failed_body": "로그를 확인하고 다시 시도해. 계속 실패하면 포트 충돌이나 Python venv 문제일 수 있어.",
+      "healthy_title": "사이드카 정상",
+      "healthy_body": "모든 서버가 열려 있어.",
+      "start_btn": "사이드카 시작",
+      "retry_btn": "다시 시도"
+    },
+    "modal": {
+      "loading": "사이드카 로드 중…",
+      "success": "정상 로드 확인",
+      "failed": "사이드카 로드 실패"
     },
     "ports": {
       "ollama": "Ollama",
@@ -95,6 +393,7 @@
     "remove_attachment": "첨부 제거",
     "attach_unsupported": "이 모델은 텍스트 전용이야",
     "queue_badge": "대기 중 {{count}}건",
+    "system_status": "실행 상태 보기",
     "tool_use": {
       "call_label": "🔧 도구 호출: {{name}}",
       "result_label": "🔧 도구 결과",
@@ -120,20 +419,132 @@
       "accept_hint": "이미지/오디오 파일 지원",
       "reject": "이 모델은 파일 첨부를 지원하지 않아",
       "reject_hint": "Vision 또는 Audio 지원 모델로 전환해"
+    },
+    "fork": {
+      "button": "여기서 분기",
+      "created": "↳ {{title}} 분기 생성됨",
+      "failed": "분기 실패: {{error}}"
+    },
+    "recommend": {
+      "label": "🎯 {{name}}로 바꿀래?",
+      "apply": "전환",
+      "dismiss": "닫기"
+    },
+    "voice": {
+      "start": "클릭해서 녹음",
+      "recording": "녹음 중… 클릭해서 정지",
+      "processing": "음성 인식 중…",
+      "error": "음성 오류: {{error}}"
     }
   },
   "models": {
     "title": "설치된 모델",
     "count": "{{count}}개 모델",
-    "empty": "MLX 모델이 없어. HF 캐시 또는 LM Studio에서 받아봐",
+    "empty": "설치된 모델이 없어. 위 검색/카탈로그에서 받아봐",
     "mlx_only": "MLX 모델만 표시",
+    "tab_general": "일반",
+    "tab_image": "이미지",
+    "fit": {
+      "title": "하드웨어 적합도",
+      "cores": "{{count}}코어",
+      "unified_gpu": "통합 GPU",
+      "free": "사용 가능",
+      "sidecar_offline": "사이드카 오프라인 — 적합도 측정 불가",
+      "scanning": "스캔 중…",
+      "empty": "아직 설치된 모델이 없어 — 아래에서 검색해서 추가해",
+      "size_unknown": "크기 미상",
+      "tier": {
+        "perfect": "쌩쌩",
+        "good": "적합",
+        "tight": "빠듯",
+        "unfit": "불가",
+        "unknown": "알 수 없음"
+      },
+      "reason": {
+        "perfect": "사용 가능 RAM의 약 {{pct}}%만 사용 — 빠르게 로드되고 긴 컨텍스트도 여유",
+        "good": "사용 가능 RAM의 약 {{pct}}% 사용 — 여유롭게 동작",
+        "tight": "사용 가능 RAM의 약 {{pct}}% 사용 — 빠듯, 짧은 컨텍스트만 가능",
+        "unfit": "사용 가능 RAM의 약 {{pct}}% 필요 — 이 머신에서는 로드 불가",
+        "unknown_size": "모델 크기를 추정할 수 없음",
+        "no_system_info": "시스템 정보 없음"
+      },
+      "recommended_title": "추천 모델",
+      "recommended_hint": "내 하드웨어에 잘 맞는 모델들",
+      "tab": {
+        "curated": "추천",
+        "explore": "탐색"
+      },
+      "explore_hint": "mlx-community 인기 모델 실시간 검색",
+      "filter": {
+        "all_kinds": "전체",
+        "fits_only": "맞는 것만",
+        "hide_installed": "설치된 것 숨기기"
+      },
+      "explore_loading": "HuggingFace에서 가져오는 중…",
+      "explore_empty": "검색 결과 없음",
+      "downloads": "{{count}} 다운로드",
+      "axis": {
+        "quality": "품질",
+        "speed": "속도",
+        "context": "컨텍스트",
+        "fit": "적합도",
+        "overall": "종합"
+      },
+      "install": "설치",
+      "installed": "설치됨",
+      "installing": "설치 중…",
+      "kind": {
+        "chat": "채팅",
+        "code": "코드",
+        "vlm": "비전",
+        "reasoning": "추론"
+      },
+      "col": {
+        "score": "점수",
+        "tps": "t/s",
+        "quant": "양자화",
+        "mode": "모드",
+        "mem": "메모리",
+        "ctx": "컨텍스트",
+        "use_case": "용도"
+      },
+      "use_case": {
+        "coding": "코딩",
+        "reasoning": "추론",
+        "chat": "채팅",
+        "vlm": "비전",
+        "general": "일반"
+      },
+      "tooltip": {
+        "params": "모델 파라미터 수"
+      },
+      "tier_badge": {
+        "supported": "지원",
+        "experimental": "실험",
+        "unknown": "미분류",
+        "reason": {
+          "supported_qwen": "Qwen 3 / Qwen2.5-Coder 계열 — 툴 사용 안정적",
+          "supported_llama": "Llama 3.1+ 계열 — 툴 사용 안정적",
+          "supported_deepseek": "DeepSeek Coder / R1 계열 — 툴 사용 안정적",
+          "supported_mistral": "Mistral / MiniMax / Mixtral 계열 — 툴 사용 안정적",
+          "experimental_small": "작은 모델 (Gemma/Phi 등) — 툴 호출 불안정, 환각 가능",
+          "experimental_size": "4B 미만 — 구조화된 출력 실패 확률 높음",
+          "unknown": "OVO 테스트 미확인 — 실사용 시 tool call 확인 필요"
+        }
+      }
+    },
+    "swap": {
+      "unmounting": "🔄 {{name}} 마운트 해제 중…",
+      "mounted": "✅ {{name}} 마운트 완료"
+    },
     "source": {
       "hf": "HuggingFace",
       "lmstudio": "LM Studio"
     },
     "capability": {
       "vision": "비전",
-      "audio": "오디오"
+      "audio": "오디오",
+      "image_gen": "이미지생성"
     },
     "perf": {
       "tokens_per_sec": "{{count}} t/s",
@@ -160,7 +571,14 @@
       "download_error": "다운로드 실패: {{error}}",
       "download_started": "{{repo}} 다운로드 시작",
       "download_done": "{{repo}} 설치 완료",
-      "empty_results": "검색 결과가 없어"
+      "empty_results": "검색 결과가 없어",
+      "cancel_btn": "다운로드 취소",
+      "cancel_sent": "취소 요청 전달됨",
+      "cancelling": "취소 중…",
+      "delete_btn": "로컬 모델 삭제",
+      "confirm_delete": "{{repo}} 을(를) 디스크에서 완전히 삭제할까?",
+      "delete_progress": "{{repo}} 삭제 중… (큰 모델은 몇 초 걸려)",
+      "delete_done": "{{repo}} 삭제 완료"
     }
   },
   "settings": {
@@ -192,7 +610,7 @@
       "sound_label": "답변 완료 알림음",
       "sound_help": "모델이 답변을 마치면 짧은 부엉이 소리를 재생해",
       "user_honorific_label": "사용자 호칭",
-      "user_honorific_placeholder": "오빠",
+      "user_honorific_placeholder": "예: 친구",
       "user_honorific_help": "모델이 너를 부르는 방식. 비워두면 자연스러운 호칭 안 씀. 프로필에 따로 설정된 경우 그게 우선."
     },
     "sampling": {
@@ -221,6 +639,75 @@
       "guide_continue": "Continue.dev (VS Code): config.json → models[].apiBase = http://localhost:11436/v1",
       "guide_zed": "Zed: settings.json → language_models.openai.api_url = http://localhost:11436/v1",
       "guide_generic": "OpenAI SDK (범용): OpenAI(base_url='http://localhost:11436/v1', api_key='none')"
+    },
+    "skills": {
+      "section_title": "스킬 카탈로그",
+      "description": "프로젝트의 .ovo/skills/*.md 파일을 자동 로드해서 모델 시스템 프롬프트에 주입해. Claude의 .claude/skills/ 파리티.",
+      "no_folder": "프로젝트 폴더가 설정되지 않았어",
+      "empty": ".ovo/skills/ 경로에 스킬이 없어. MD 파일을 추가하고 다시 스캔해봐",
+      "rescan": "다시 스캔",
+      "pick_override": "다른 폴더 선택",
+      "clear_override": "기본으로",
+      "active_count": "활성 {{active}} / 총 {{total}}개",
+      "error": "스캔 실패: {{error}}"
+    },
+    "feature_flags": {
+      "section_title": "기능 토글",
+      "description": "OVO의 자동 동작을 끄고 켜. 모두 기본값은 켜짐이지만, 시스템 프롬프트를 가볍게 유지하거나 자동 주입을 막고 싶으면 여기서 끄면 돼.",
+      "reset": "전부 켜짐으로 복원",
+      "off_badge": "꺼짐",
+      "enable_skills_label": "스킬 자동 로드",
+      "enable_skills_help": ".ovo/skills/*.md 파일을 스캔해서 메모리에 올려둬. 끄면 스캔도 안 해.",
+      "enable_personas_label": "페르소나 적용",
+      "enable_personas_help": "선택된 페르소나의 시스템 프롬프트와 샘플링 오버라이드를 채팅에 적용. 끄면 셀렉터는 보이지만 영향이 없어.",
+      "enable_skills_injection_label": "스킬 주입",
+      "enable_skills_injection_help": "활성화된 스킬을 <ovo_skills> 블록으로 시스템 프롬프트에 추가. 스캔과는 별개야.",
+      "enable_wiki_retrieval_label": "Wiki 자동 검색",
+      "enable_wiki_retrieval_help": "매 채팅 턴마다 hybrid 검색으로 관련 Wiki를 찾아 시스템 프롬프트에 주입. 끄면 모델은 Wiki를 못 봐.",
+      "enable_memory_tools_label": "memory_* 툴 노출",
+      "enable_memory_tools_help": "memory_search/add/list/delete/archive 빌트인 툴을 모델에게 알려줌. 끄면 모델이 Wiki를 직접 수정 못 해.",
+      "enable_wiki_auto_capture_label": "세션 종료 시 자동 캡처",
+      "enable_wiki_auto_capture_help": "(곧 추가) 세션 종료/compact 시 의미있는 발견을 Wiki에 session-log 카테고리로 자동 저장.",
+      "enable_semantic_compact_label": "시맨틱 Compact",
+      "enable_semantic_compact_help": "임베딩으로 현재 주제와 무관/중복된 메시지를 우선 요약. 사이드카 다운 시 시간순 압축으로 자동 폴백.",
+      "enable_model_recommendation_label": "자동 모델 추천",
+      "enable_model_recommendation_help": "프롬프트와 첨부 분석으로 더 적합한 모델이 있으면 채팅 입력 위에 칩으로 제안. 클릭 한 번으로 전환.",
+      "enable_voice_input_label": "음성 입력 (마이크 → 텍스트)",
+      "enable_voice_input_help": "채팅 입력에 마이크 버튼 추가. 클릭해서 녹음, 다시 클릭해서 mlx-whisper로 텍스트 변환 (사이드카 필요).",
+      "enable_tts_response_label": "응답 읽어주기 (TTS)",
+      "enable_tts_response_help": "스트리밍이 끝나면 어시스턴트 응답을 macOS `say`로 읽어줘. 새 응답에만 적용, 기존 히스토리는 해당 없음."
+    },
+    "personas": {
+      "section_title": "페르소나",
+      "description": "프로젝트의 .ovo/personas/*.md 파일이 곧 페르소나야. 첫 실행 시 5개 기본 템플릿이 자동 생성되고, 여기서 수정하면 즉시 디스크에 반영돼.",
+      "no_folder": "프로젝트 폴더가 설정되지 않았어",
+      "empty": "페르소나가 없어. + 새 페르소나 버튼으로 만들어봐",
+      "rescan": "다시 스캔",
+      "create": "+ 새 페르소나",
+      "create_prompt": "새 페르소나 이름을 입력해 (한글/영문 모두 가능)",
+      "builtin_badge": "기본",
+      "field_emoji": "이모지",
+      "field_name": "이름",
+      "field_honorific": "사용자 호칭",
+      "field_persona": "페르소나 (시스템 프롬프트 본문)",
+      "honorific_placeholder": "예: 친구",
+      "persona_placeholder": "이 페르소나의 성격, 말투, 업무 지침을 자유롭게 적어줘",
+      "sampling_title": "샘플링 오버라이드 (선택)",
+      "extra_title": "추가 시스템 지시 (선택)",
+      "extra_placeholder": "페르소나 본문 외에 덧붙일 한 줄짜리 지시",
+      "use_override": "오버라이드",
+      "max_tokens_inherit": "기본값 사용",
+      "max_tokens_limit": "토큰 제한",
+      "save": "저장",
+      "saved": "{{name}} 저장됨",
+      "reset": "기본값 복원",
+      "confirm_reset": "{{name}} 페르소나를 기본 템플릿으로 되돌릴까?",
+      "reset_done": "{{name}}을(를) 기본값으로 복원했어",
+      "delete": "삭제",
+      "confirm_delete": "{{name}} 페르소나를 정말 삭제할까?",
+      "copy_path": "경로 복사",
+      "path_copied": "경로를 클립보드에 복사했어",
+      "error": "스캔 실패: {{error}}"
     },
     "project_context": {
       "section_title": "프로젝트 컨텍스트",
@@ -308,7 +795,8 @@
     "pin": "고정",
     "unpin": "고정 해제",
     "delete": "삭제",
-    "confirm_delete": "정말 삭제할까?"
+    "confirm_delete": "정말 삭제할까?",
+    "branched": "다른 세션에서 분기된 대화"
   },
   "context": {
     "project_badge": "📄 {{count}} files",

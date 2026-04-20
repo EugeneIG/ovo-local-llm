@@ -40,9 +40,9 @@ export function AboutPane() {
         {appInfo && (
           <p className="mt-1 text-xs text-ovo-accent font-mono">v{appInfo.version}</p>
         )}
-        {/* [START] Author credit — OVOmet 팀의 ben */}
+        {/* [START] Author credit — ovoment 팀의 ben */}
         <p className="mt-3 text-xs text-ovo-muted">
-          Made by <span className="font-medium text-ovo-text">ben</span> @ OVOmet
+          Made by <span className="font-medium text-ovo-text">ben</span> @ ovoment
         </p>
         <a
           href="mailto:ben@ovoment.com"

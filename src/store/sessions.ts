@@ -6,6 +6,7 @@ import {
   clearMessages as dbClearMessages,
   createSession as dbCreateSession,
   deleteSession as dbDeleteSession,
+  forkSession as dbForkSession,
   listLiveMessages as dbListLiveMessages,
   listSessions as dbListSessions,
   renameSession as dbRenameSession,
@@ -39,6 +40,7 @@ interface SessionsState {
   togglePinned: (id: string) => Promise<void>;
   deleteSession: (id: string) => Promise<void>;
   escapeToNewSession: () => Promise<Session | null>;
+  forkFromMessage: (sessionId: string, messageId: string) => Promise<Session | null>;
   clearCurrentMessages: () => Promise<void>;
   setCompactStrategy: (id: string, strategy: CompactStrategy) => Promise<void>;
   setSessionModel: (id: string, modelRef: string | null) => Promise<void>;
@@ -89,6 +91,19 @@ export const useSessionsStore = create<SessionsState>((set, get) => ({
 
   selectSession: async (id) => {
     if (id === get().currentSessionId) return;
+    // [START] Phase 8 — auto-capture the session we're leaving (best-effort)
+    const prevId = get().currentSessionId;
+    if (prevId && prevId !== id) {
+      const prev = get().sessions.find((s) => s.id === prevId);
+      void import("../lib/wikiAutoCapture").then((mod) =>
+        mod.autoCaptureSession({
+          sessionId: prevId,
+          sessionTitle: prev?.title ?? null,
+          modelRef: prev?.model_ref ?? null,
+        }),
+      );
+    }
+    // [END]
     set({ currentSessionId: id, messages: [] });
     if (id) await get().loadMessages(id);
   },
@@ -133,6 +148,21 @@ export const useSessionsStore = create<SessionsState>((set, get) => ({
   },
 
   deleteSession: async (id) => {
+    // [START] Phase 8 — capture before deletion so the knowledge survives
+    const target = get().sessions.find((s) => s.id === id);
+    if (target) {
+      try {
+        const mod = await import("../lib/wikiAutoCapture");
+        await mod.autoCaptureSession({
+          sessionId: id,
+          sessionTitle: target.title,
+          modelRef: target.model_ref ?? null,
+        });
+      } catch {
+        /* best-effort; deletion still proceeds */
+      }
+    }
+    // [END]
     await dbDeleteSession(id);
     set((s) => {
       const sessions = s.sessions.filter((x) => x.id !== id);
@@ -154,6 +184,24 @@ export const useSessionsStore = create<SessionsState>((set, get) => ({
       compact_strategy: current.compact_strategy,
     });
   },
+
+  // [START] Phase 8 — fork from a specific message into a new session and
+  // switch to it. The branch keeps every visible message up to (and including)
+  // the fork point, then the user can edit/regenerate from there.
+  forkFromMessage: async (sessionId, messageId) => {
+    const branch = await dbForkSession({
+      src_session_id: sessionId,
+      fork_message_id: messageId,
+    });
+    set((s) => ({
+      sessions: replaceOrAppend(s.sessions, branch),
+      currentSessionId: branch.id,
+      messages: [],
+    }));
+    await get().loadMessages(branch.id);
+    return branch;
+  },
+  // [END]
 
   clearCurrentMessages: async () => {
     const id = get().currentSessionId;
@@ -186,6 +234,14 @@ export const useSessionsStore = create<SessionsState>((set, get) => ({
         x.id === id ? { ...x, model_ref: modelRef } : x,
       ),
     }));
+    // [START] Phase 8 — surface the swap as a top-center toast (unmount → mount)
+    if (prev !== modelRef) {
+      // Lazy import to avoid pulling the toast store into headless callers
+      void import("./model_swap").then((mod) =>
+        mod.useModelSwapStore.getState().notifySwap(prev, modelRef, "llm"),
+      );
+    }
+    // [END]
     // [START] free unified memory when the session's model actually changes
     // to a different ref (or is cleared). Fire-and-forget so the UI swap
     // isn't blocked by the sidecar's unload work.

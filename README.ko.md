@@ -1,68 +1,175 @@
-# OVO (MLX)
+<p align="center">
+  <img src="docs/images/logo.jpg" alt="OVO — ovo-local-llm" width="480">
+</p>
 
-> 🦉 Apple Silicon 전용 MLX 로컬 LLM 런타임 + 데스크톱을 돌아다니는 부엉이 마스코트. Claude Code 보조 도구.
+<p align="center">
+  <a href="https://ko-fi.com/ovoment"><img src="https://img.shields.io/badge/Ko--fi로%20응원하기-ff5e5b?logo=ko-fi&logoColor=white" alt="Ko-fi"></a>
+  <img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License">
+  <img src="https://img.shields.io/badge/macOS-13%2B-black?logo=apple&logoColor=white" alt="macOS 13+">
+  <img src="https://img.shields.io/badge/Apple%20Silicon-M1%20%E2%86%92%20M4-orange" alt="Apple Silicon">
+</p>
 
-**상태**: Phase 0 — 스캐폴딩 (2026-04-17)
+<h3 align="center">🦉 All the LLMs. On device.</h3>
 
-## OVO란?
+<p align="center">
+  Apple Silicon에서 모든 오픈 LLM을 로컬로 — MLX · Transformers · VLM · Diffusion.<br>
+  코딩 상태에 반응하는 SVG 부엉이 마스코트 포함.
+</p>
 
-Apple Silicon에서 MLX 포맷 LLM을 로컬로 돌리는 macOS 데스크톱 앱. 세 가지 특징:
+<p align="center">
+  <a href="README.md">🇺🇸 English README</a>
+</p>
 
-1. **MLX 전용** — GGUF, GGML 지원 안 함. 순수 Apple Silicon 가속
-2. **HuggingFace 네이티브** — `~/.cache/huggingface/hub/`의 기존 MLX 모델 자동 감지 + 재사용 (중복 다운로드 없음)
-3. **Claude Code 컴패니언** — 선택 시 `CLAUDE.md` / `.claude/` 파일을 읽어서 로컬 LLM이 Claude Code와 컨텍스트 공유
-4. **부엉이 마스코트** — 데스크톱을 걸어다니고, 타이핑할 때 같이 움직이고, 더블클릭하면 로컬 MLX 모델로 답해주는 픽셀아트 부엉이
+---
 
-## 요구사항
+<p align="center">
+  <img src="docs/images/chat.png" alt="OVO 채팅" width="860">
+</p>
 
-- macOS 13+ Apple Silicon (M1/M2/M3/M4)
-- Node.js 20+
-- Rust stable
-- Python 3.12+
-- `uv` (Python 패키지 매니저)
+## ✨ 기능
 
-## 아키텍처
+### 💬 Chat — 모든 로컬 LLM을 하나의 인터페이스로
 
-- **셸**: Tauri 2 (Rust) — Electron 대비 용량/메모리 10배 경량
-- **프론트엔드**: React + TypeScript + Tailwind + shadcn/ui
-- **백엔드**: Python 3.12 FastAPI 사이드카
-- **MLX 런타임**: `mlx-lm`
-- **모델 소스**: HuggingFace hub (로컬 캐시)
+Ollama / OpenAI API 완전 호환, 스트리밍 응답, 세션 최근 목록, 페르소나 전환, 파일 첨부 (PDF · Excel · Word · 이미지), 음성 입력 + TTS 자동 언어 감지 (ko / en / ja / zh).
 
-자세한 내용은 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) 참고.
+### 💻 Code IDE — 손을 가진 에이전트
 
-## 개발
+<p align="center">
+  <img src="docs/images/code.png" alt="OVO Code IDE" width="860">
+</p>
+
+Monaco 에디터 + 파일 탐색기 + Git 패널 + PTY 터미널 + AI 인라인 자동완성. 오른쪽의 Agent Chat은 **파일 읽기/쓰기/검색/실행** 도구와 MCP 서버 통합을 갖춘 에이전트 — 말로만 설명하는 게 아니라 실제로 작업을 수행합니다.
+
+### 🖼️ 이미지 생성 — 내 노트북 위의 Diffusion
+
+<p align="center">
+  <img src="docs/images/image.png" alt="OVO 이미지 생성" width="860">
+</p>
+
+`diffusers` 기반 로컬 text-to-image. 샘플러 / 스텝 / CFG / LoRA 조절. 90 % 케이스를 위한 스타일 프리셋 제공.
+
+### 📚 Wiki — 세션을 넘어 이어지는 지식
+
+<p align="center">
+  <img src="docs/images/wiki.png" alt="OVO 위키" width="860">
+</p>
+
+큐레이션 노트 + 자동 캡처 세션 로그, BM25 + 시맨틱 검색. 로컬 모델이 위키를 조회해서 재시작 후에도 컨텍스트를 유지합니다.
+
+### 🤖 Models — HuggingFace 네이티브, 중복 다운로드 제로
+
+<p align="center">
+  <img src="docs/images/models.png" alt="OVO 모델 탭" width="860">
+</p>
+
+`~/.cache/huggingface/hub/` + LM Studio 캐시를 자동 감지. 이미 받아둔 모델은 그대로 목록에 뜸. Tier 뱃지 (Supported / Experimental), tok/s 벤치마크, vision / audio 능력 플래그 표시.
+
+### 🧭 Hardware Fit — 내 맥에 진짜로 돌아가는 모델
+
+<p align="center">
+  <img src="docs/images/hardwarefit.png" alt="OVO 하드웨어 적합도" width="860">
+</p>
+
+RAM / GPU / 컨텍스트 여유도에 맞춰 모든 모델을 점수화. 마케팅 문구가 아니라 **내 기기에서의 실제 성능**으로 정렬된 추천.
+
+### 🦉 데스크톱 마스코트
+
+<p align="center">
+  <img src="docs/images/pet1.png" alt="부엉이 — 생각 중" width="320">
+  &nbsp;&nbsp;
+  <img src="docs/images/pet2.png" alt="부엉이 — 대기" width="320">
+</p>
+
+데스크톱 위에 앉아서 코딩 상태 (대기 / 생각 / 타이핑 / 기쁨) 에 따라 모션이 바뀌는 SVG 부엉이. 더블클릭하면 메인 창이 올라옵니다.
+
+## 📦 설치
+
+1. [**Releases**](https://github.com/ovoment/ovo-local-llm/releases) 에서 최신 `OVO_x.y.z_aarch64.dmg` 다운로드.
+2. **OVO.app** 을 `/Applications` 로 드래그.
+3. Gatekeeper 격리 해제 (아직 서명 안 된 빌드):
 
 ```bash
-# Tauri 의존성 설치
+xattr -cr /Applications/OVO.app
+open /Applications/OVO.app
+```
+
+**첫 실행 시** `~/Library/Application Support/com.ovoment.ovo/runtime/` 에 Python 런타임을 설치합니다 (약 1.5 GB, 3분, 1회). 이후 실행은 즉시 가동.
+
+### 시스템 요구사항
+
+- macOS **13+** Apple Silicon (M1 / M2 / M3 / M4). Intel 미지원.
+- **16 GB RAM** 최소 (7B 모델 기준), **32 GB+** 권장 (14B 이상).
+- 런타임 + 모델 1-2개를 위한 **10 GB** 여유 디스크.
+
+## 🚀 빠른 시작
+
+1. OVO 실행.
+2. **Models** 탭에서 모델 선택 (Qwen3, Llama 3.3, Gemma, Mistral, DeepSeek, ...) → 다운로드.
+3. **Chat** 에서 메시지 전송 — 로컬 모델이 응답, 외부 API 호출 없음.
+4. 필요하면 **Code** 탭에서 프로젝트 폴더를 열어 IDE + Agent Chat 사용.
+
+## 🔌 API 호환성
+
+| 종류 | 포트 | 용도 |
+|------|:----:|------|
+| Ollama | `11435` | Ollama 클라이언트 대체 (Open WebUI, Page Assist, ...) |
+| OpenAI | `11436` | `base_url` 을 `http://localhost:11436/v1` 로 지정 |
+| Native | `11437` | OVO 전용 엔드포인트 — 모델 관리, Wiki, 스트리밍, 음성 |
+
+## 🤝 Claude Code 통합 (선택)
+
+로컬 Claude Code 설정을 **읽기만** 해서 로컬 모델과 컨텍스트를 공유합니다:
+
+- `CLAUDE.md` — 시스템 컨텍스트로 주입
+- `.claude/settings.json` — 설정 반영
+- `.claude/plugins/**` — 동작 힌트
+
+기본 비활성화. **Settings → Claude Integration** 에서 활성화. OVO는 claude.ai, API 키, 세션 토큰 등 Claude 계정에 영향을 줄 수 있는 어떤 것도 절대 건드리지 않습니다.
+
+## 🛠️ 개발
+
+```bash
+git clone https://github.com/ovoment/ovo-local-llm.git
+cd ovo-local-llm
+
+# 프론트엔드 + Rust 의존성
 npm install
 
-# Python 사이드카 의존성 설치
+# Python 사이드카 venv (dev는 $HOME 캐시 사용, SMB 락 회피)
 cd sidecar && uv sync && cd ..
 
-# 개발 서버 실행
+# 전체 스택 dev 실행
 npm run tauri dev
 ```
 
-## API 호환성
+릴리스 빌드: `npm run tauri build` — Cargo 타겟 디렉토리에 `.app` + `.dmg` 생성.
 
-OVO는 로컬 포트에 두 가지 HTTP API를 노출:
+자세한 문서: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) · [docs/release/BUILD.md](docs/release/BUILD.md) · [docs/release/SECURITY.md](docs/release/SECURITY.md) · [docs/release/PRIVACY.md](docs/release/PRIVACY.md)
 
-- **Ollama 호환** (기본 포트 11435) — Ollama 클라이언트 대체제
-- **OpenAI 호환** (기본 포트 11436) — OpenAI SDK 그대로 사용 가능
+## 🧱 아키텍처
 
-## Claude Code 통합 (선택 사항)
+- **쉘** — Tauri 2 (Rust)
+- **프론트엔드** — React 18 + TypeScript + Tailwind + shadcn/ui + Monaco
+- **사이드카** — Python 3.12 FastAPI, Rust가 생성, 번들된 `uv` 로 첫 실행 시 유저 캐시에 venv 부트스트랩
+- **런타임** — `mlx-lm`, `mlx-vlm`, `mlx-whisper`, `transformers`, `diffusers`
+- **스토리지** — SQLite (채팅 + Wiki), 로컬 파일시스템 (첨부, 모델)
 
-OVO는 로컬 Claude Code 설정을 **읽기만** 함 (쓰기/전송 안 함):
+## ☕ 후원
 
-- `CLAUDE.md` — 시스템 컨텍스트로 주입
-- `.claude/settings.json` — 설정 참고
-- `.claude/plugins/**` — 모델 동작 풍부화
+OVO는 1인 개발자 프로젝트입니다. 커피 한 잔 = 지원 가능한 모델 아키텍처 하나 늘어남.
 
-기본 비활성화. **Settings → Claude 통합**에서 활성화.
+<p align="center">
+  <a href="https://ko-fi.com/ovoment"><img src="https://ko-fi.com/img/githubbutton_sm.svg" alt="Ko-fi에서 응원하기"></a>
+</p>
 
-OVO는 **절대** claude.ai, API 키, 세션 토큰, Claude 계정에 영향 줄 수 있는 어떤 것도 건드리지 않음.
+## 📜 라이선스
 
-## 라이선스
+[MIT](LICENSE) — 사용 · 포크 · 배포 자유.
 
-MIT
+<p align="center">
+  <img src="docs/images/info.png" alt="OVO 정보" width="720">
+</p>
+
+<p align="center">
+  Made with 🦉 by <a href="https://github.com/ovoment">ben @ ovoment</a>
+</p>

@@ -45,12 +45,13 @@ export function ModelProfileSelector() {
             : "bg-ovo-surface border-ovo-border text-ovo-muted hover:text-ovo-text hover:bg-ovo-surface-solid"
         }`}
       >
-        {active.emoji ? (
-          <span aria-hidden>{active.emoji}</span>
-        ) : (
-          <UserRound className="w-3 h-3" aria-hidden />
-        )}
+        {/* [START] Phase 8 — emoji hidden in selector chrome (request).
+            The profile's emoji stays in the underlying md file so custom
+            personas can express themselves elsewhere, but the chat header
+            and dropdown render as plain-text labels with a neutral icon. */}
+        <UserRound className="w-3 h-3" aria-hidden />
         <span>{active.name}</span>
+        {/* [END] */}
         <ChevronDown
           className={`w-3 h-3 transition-transform ${open ? "rotate-180" : ""}`}
           aria-hidden
@@ -79,9 +80,6 @@ export function ModelProfileSelector() {
                     : "text-ovo-muted hover:bg-ovo-bg hover:text-ovo-text"
                 }`}
               >
-                <span className="w-4 text-center" aria-hidden>
-                  {p.emoji ?? "·"}
-                </span>
                 <span className="flex-1 truncate">{p.name}</span>
                 {p.builtin && (
                   <span className="text-[9px] uppercase tracking-wider text-ovo-muted/70">

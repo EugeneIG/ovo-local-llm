@@ -1,212 +1,29 @@
-import { memo, useEffect, useState } from "react";
+import { memo, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { ChevronDown } from "lucide-react";
+import { ChevronDown, GitBranch } from "lucide-react";
 import type { Message } from "../types/ovo";
 import { AttachmentChip } from "./AttachmentChip";
-// [START] Phase 6.2c — tool-use segment parsing helpers
-import { parseToolUseBlock } from "../lib/toolUse";
+// [START] Phase 8 — shared segment parser (lib/messageSegments).
+// parseSegments auto-hides self-talk lines ("Wait, I should...", "The user...",
+// "Turn N:"…) so every chat surface — main chat, code agent — inherits the
+// same reasoning-noise filter instead of each renderer maintaining its own
+// copy. Segment type is re-exported from the shared module.
+import { parseSegments } from "../lib/messageSegments";
+// [END]
+// [START] Phase 8 — fork action
+import { useSessionsStore } from "../store/sessions";
+import { useToastsStore } from "../store/toasts";
+// [END]
+// [START] Phase 8 — TTS auto-play
+import { useFeatureFlagsStore } from "../store/feature_flags";
+import { speakText, cancelTts } from "../lib/voiceIO";
+import { useSidecarStore } from "../store/sidecar";
 // [END]
 
 interface Props {
   message: Message;
   streaming?: boolean;
 }
-
-// [START] Multi-format reasoning parser.
-// Normalizes several reasoning markup dialects into canonical <think>/</think>
-// before segmentation: Harmony channels (analysis/thought/commentary/final),
-// ChatML think turns, alt HTML-ish tags (<thinking>, <reasoning>, ...), bracket
-// variants ([THOUGHT]..[/THOUGHT]). Then strips any loose harmony/ChatML meta
-// tokens that leaked into plain text (the original bug: raw `<|channel|>`, etc.
-// visible in the bubble for gpt-oss / harmony-formatted models).
-type Segment =
-  | { type: "text"; content: string }
-  | { type: "think"; content: string; open: boolean }
-  // [START] Phase 6.2c — tool-use segment types
-  | { type: "tool_use"; name: string; argsJson: string }
-  | { type: "tool_result"; content: string };
-  // [END]
-
-const OPEN_TAG = "<think>";
-const CLOSE_TAG = "</think>";
-
-function normalizeReasoning(input: string): string {
-  let s = input;
-
-  // Complete Harmony reasoning channels → <think>..</think>
-  s = s.replace(
-    /<\|channel\|>(?:analysis|thought|commentary)(?:<\|constrain\|>[^<]*)?<\|message\|>([\s\S]*?)(?:<\|end\|>|<\|return\|>)/g,
-    (_m, body: string) => `${OPEN_TAG}${body}${CLOSE_TAG}`,
-  );
-  // Complete Harmony final/response channel → strip wrapper, keep body as text
-  s = s.replace(
-    /<\|channel\|>(?:final|response)(?:<\|constrain\|>[^<]*)?<\|message\|>([\s\S]*?)(?:<\|end\|>|<\|return\|>)/g,
-    (_m, body: string) => body,
-  );
-  // Streaming Harmony reasoning open-only (no terminator yet)
-  s = s.replace(
-    /<\|channel\|>(?:analysis|thought|commentary)(?:<\|constrain\|>[^<]*)?<\|message\|>/g,
-    OPEN_TAG,
-  );
-  // Streaming Harmony final open-only → drop wrapper
-  s = s.replace(
-    /<\|channel\|>(?:final|response)(?:<\|constrain\|>[^<]*)?<\|message\|>/g,
-    "",
-  );
-
-  // ChatML think turn → <think>..</think>
-  s = s.replace(
-    /<\|im_start\|>(?:think|reasoning|analysis|assistant_thought)\s*\n?([\s\S]*?)<\|im_end\|>/g,
-    (_m, body: string) => `${OPEN_TAG}${body}${CLOSE_TAG}`,
-  );
-  s = s.replace(
-    /<\|im_start\|>(?:think|reasoning|analysis|assistant_thought)\s*\n?/g,
-    OPEN_TAG,
-  );
-
-  // Alt HTML-ish tag pairs → <think>..</think>
-  const altPairs: Array<[string, string]> = [
-    ["thinking", "thinking"],
-    ["reasoning", "reasoning"],
-    ["reflection", "reflection"],
-    ["scratchpad", "scratchpad"],
-  ];
-  for (const [open, close] of altPairs) {
-    s = s.replace(
-      new RegExp(`<${open}>([\\s\\S]*?)</${close}>`, "g"),
-      (_m, body: string) => `${OPEN_TAG}${body}${CLOSE_TAG}`,
-    );
-    s = s.replace(new RegExp(`<${open}>`, "g"), OPEN_TAG);
-  }
-
-  // Bracket reasoning variants
-  const brackets = ["THOUGHT", "THINK", "REASONING"];
-  for (const name of brackets) {
-    s = s.replace(
-      new RegExp(`\\[${name}\\]([\\s\\S]*?)\\[/${name}\\]`, "g"),
-      (_m, body: string) => `${OPEN_TAG}${body}${CLOSE_TAG}`,
-    );
-    s = s.replace(new RegExp(`\\[${name}\\]`, "g"), OPEN_TAG);
-    s = s.replace(new RegExp(`\\[/${name}\\]`, "g"), CLOSE_TAG);
-  }
-
-  // Loose Harmony/ChatML meta tokens that slipped through — strip so they don't
-  // render as plaintext garbage in the bubble.
-  s = s.replace(
-    /<\|(?:start|end|return|message|channel|constrain|\/constrain|im_start|im_end)\|>/g,
-    "",
-  );
-
-  return s;
-}
-
-function skipLeadingWs(s: string, from: number): number {
-  let j = from;
-  while (j < s.length) {
-    const c = s[j];
-    if (c === " " || c === "\n" || c === "\r" || c === "\t") j++;
-    else break;
-  }
-  return j;
-}
-
-// [START] Phase 6.2c — tool_result tag constants
-const TOOL_USE_OPEN = "<tool_use>";
-const TOOL_USE_CLOSE = "</tool_use>";
-const TOOL_RESULT_OPEN = "<tool_result>";
-const TOOL_RESULT_CLOSE = "</tool_result>";
-// [END]
-
-function parseSegments(raw: string): Segment[] {
-  const content = normalizeReasoning(raw);
-  const out: Segment[] = [];
-  let i = 0;
-
-  // Implicit-open: R1-style templates inject <think> on the server side, so the
-  // stream can begin with reasoning content that terminates at </think>.
-  const firstOpen = content.indexOf(OPEN_TAG);
-  const firstClose = content.indexOf(CLOSE_TAG);
-  if (firstClose !== -1 && (firstOpen === -1 || firstClose < firstOpen)) {
-    const prefix = content.slice(0, firstClose).trim();
-    out.push({ type: "think", content: prefix, open: false });
-    i = skipLeadingWs(content, firstClose + CLOSE_TAG.length);
-  }
-
-  while (i < content.length) {
-    // [START] Phase 6.2c — find the nearest special tag among think/tool_use/tool_result
-    const nextThink = content.indexOf(OPEN_TAG, i);
-    const nextToolUse = content.indexOf(TOOL_USE_OPEN, i);
-    const nextToolResult = content.indexOf(TOOL_RESULT_OPEN, i);
-
-    // Pick the earliest tag; -1 means absent (treat as Infinity for comparison)
-    const candidates: Array<[number, string]> = [
-      [nextThink === -1 ? Infinity : nextThink, "think"],
-      [nextToolUse === -1 ? Infinity : nextToolUse, "tool_use"],
-      [nextToolResult === -1 ? Infinity : nextToolResult, "tool_result"],
-    ];
-    candidates.sort((a, b) => a[0] - b[0]);
-    const [nearestIdx, nearestKind] = candidates[0];
-
-    if (nearestIdx === Infinity) {
-      // No more special tags — rest is plain text
-      out.push({ type: "text", content: content.slice(i) });
-      break;
-    }
-
-    // Emit any plain text before the tag
-    if (nearestIdx > i) {
-      out.push({ type: "text", content: content.slice(i, nearestIdx) });
-    }
-
-    if (nearestKind === "think") {
-      const afterOpen = nearestIdx + OPEN_TAG.length;
-      const closeIdx = content.indexOf(CLOSE_TAG, afterOpen);
-      if (closeIdx === -1) {
-        out.push({ type: "think", content: content.slice(afterOpen), open: true });
-        return out.filter((s) => !(s.type === "text" && s.content.length === 0));
-      }
-      out.push({ type: "think", content: content.slice(afterOpen, closeIdx), open: false });
-      i = skipLeadingWs(content, closeIdx + CLOSE_TAG.length);
-    } else if (nearestKind === "tool_use") {
-      // [START] Phase 6.2c — parse tool_use segment
-      const afterOpen = nearestIdx + TOOL_USE_OPEN.length;
-      const closeIdx = content.indexOf(TOOL_USE_CLOSE, afterOpen);
-      if (closeIdx === -1) {
-        // Incomplete block during streaming — treat remainder as text
-        out.push({ type: "text", content: content.slice(nearestIdx) });
-        break;
-      }
-      const parsed = parseToolUseBlock(content.slice(nearestIdx));
-      if (parsed !== null) {
-        out.push({
-          type: "tool_use",
-          name: parsed.name,
-          argsJson: JSON.stringify(parsed.arguments, null, 2),
-        });
-      } else {
-        // Fallback: emit as text if JSON parsing failed
-        out.push({ type: "text", content: content.slice(nearestIdx, closeIdx + TOOL_USE_CLOSE.length) });
-      }
-      i = skipLeadingWs(content, closeIdx + TOOL_USE_CLOSE.length);
-      // [END]
-    } else {
-      // tool_result
-      // [START] Phase 6.2c — parse tool_result segment
-      const afterOpen = nearestIdx + TOOL_RESULT_OPEN.length;
-      const closeIdx = content.indexOf(TOOL_RESULT_CLOSE, afterOpen);
-      if (closeIdx === -1) {
-        out.push({ type: "text", content: content.slice(nearestIdx) });
-        break;
-      }
-      out.push({ type: "tool_result", content: content.slice(afterOpen, closeIdx).trim() });
-      i = skipLeadingWs(content, closeIdx + TOOL_RESULT_CLOSE.length);
-      // [END]
-    }
-    // [END] Phase 6.2c nearest-tag dispatch
-  }
-  return out.filter((s) => !(s.type === "text" && s.content.length === 0));
-}
-// [END]
 
 // [START] Phase 6.2c — ToolUseBlock: collapsible card for assistant tool calls
 function ToolUseBlock({ name, argsJson }: { name: string; argsJson: string }) {
@@ -308,11 +125,80 @@ function ThinkBlock({ content, open }: { content: string; open: boolean }) {
   );
 }
 
+// [START] Phase 8 — Fork button: appears on hover on user/assistant bubbles.
+// Forks the current session at this message id into a new branch session and
+// switches focus to it. Tool-result and summary bubbles are not forkable.
+function ForkButton({ messageId, side }: { messageId: string; side: "left" | "right" }) {
+  const { t } = useTranslation();
+  const fork = useSessionsStore((s) => s.forkFromMessage);
+  const currentSessionId = useSessionsStore((s) => s.currentSessionId);
+  const pushToast = useToastsStore((s) => s.push);
+
+  async function handle() {
+    if (!currentSessionId) return;
+    try {
+      const branch = await fork(currentSessionId, messageId);
+      if (branch) {
+        pushToast({ kind: "success", message: t("chat.fork.created", { title: branch.title }) });
+      }
+    } catch (e) {
+      pushToast({
+        kind: "error",
+        message: t("chat.fork.failed", { error: e instanceof Error ? e.message : String(e) }),
+      });
+    }
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={() => void handle()}
+      title={t("chat.fork.button")}
+      aria-label={t("chat.fork.button")}
+      className={`opacity-0 group-hover:opacity-100 focus:opacity-100 transition p-1 rounded text-ovo-muted hover:text-ovo-accent hover:bg-ovo-bg/40 ${
+        side === "right" ? "order-first" : ""
+      }`}
+    >
+      <GitBranch className="w-3 h-3" aria-hidden />
+    </button>
+  );
+}
+// [END]
+
 function ChatMessageBubbleImpl({ message, streaming }: Props) {
   const { t } = useTranslation();
   const isUser = message.role === "user";
   const isSummary = message.role === "summary";
   const isSystem = message.role === "system";
+
+  // [START] Phase 8 — TTS auto-play: fire when streaming transitions true→false.
+  // prevStreamingRef tracks the previous value so we only speak NEW completed turns,
+  // not historical messages that mount with streaming=false.
+  const enableTts = useFeatureFlagsStore((s) => s.enable_tts_response);
+  const ports = useSidecarStore((s) => s.status.ports);
+  const prevStreamingRef = useRef(streaming ?? false);
+  useEffect(() => {
+    const wasStreaming = prevStreamingRef.current;
+    prevStreamingRef.current = streaming ?? false;
+    if (wasStreaming && !streaming && message.role === "assistant" && enableTts) {
+      // Reuse parseSegments so every reasoning dialect (Harmony, ChatML, alt
+      // tags, brackets) is normalized + stripped, plus tool_use/tool_result
+      // blocks. Only `text` segments survive into TTS.
+      const plain = parseSegments(message.content)
+        .filter((seg) => seg.type === "text")
+        .map((seg) => (seg as { content: string }).content)
+        .join(" ")
+        .replace(/```[\s\S]*?```/g, "")
+        .replace(/`[^`]+`/g, "")
+        .replace(/[*_#>~]/g, "")
+        .trim();
+      if (plain) {
+        speakText(plain, ports).catch((err) => console.error("[voiceIO] TTS:", err));
+      }
+    }
+  }, [streaming, enableTts]);
+  useEffect(() => () => { cancelTts(); }, []);
+  // [END]
 
   // [START] Summary bubble — auto-compact insertion. Rendered as a muted,
   // centered card so the user recognizes it as synthesized context rather than
@@ -336,13 +222,17 @@ function ChatMessageBubbleImpl({ message, streaming }: Props) {
 
   if (isUser) {
     const hasAttachments = (message.attachments?.length ?? 0) > 0;
-    // [START] Phase 6.2c — detect pure tool_result user messages and render as card
+    // [START] Phase 6.2c / Phase 5 — tool_result user messages are the
+    // downstream side of a tool call, not actual user input. Route them to
+    // the LEFT (assistant side) so the timeline reads "tool_use → tool_result"
+    // grouped under the agent turn that triggered them, instead of bouncing
+    // the result chip to the user column.
     const userSegments = parseSegments(message.content);
     const isOnlyToolResult =
       userSegments.length === 1 && userSegments[0].type === "tool_result";
     if (isOnlyToolResult && userSegments[0].type === "tool_result") {
       return (
-        <div className="flex justify-end">
+        <div className="flex justify-start">
           <div className="max-w-[78%]">
             <ToolResultBlock content={userSegments[0].content} />
           </div>
@@ -351,7 +241,7 @@ function ChatMessageBubbleImpl({ message, streaming }: Props) {
     }
     // [END]
     return (
-      <div className="flex flex-col items-end gap-1">
+      <div className="flex flex-col items-end gap-1 group">
         {hasAttachments && (
           <div className="flex flex-wrap gap-1.5 justify-end max-w-[78%]">
             {message.attachments!.map((a) => (
@@ -360,8 +250,11 @@ function ChatMessageBubbleImpl({ message, streaming }: Props) {
           </div>
         )}
         {message.content.length > 0 && (
-          <div className="max-w-[78%] rounded-2xl rounded-br-sm bg-ovo-user text-ovo-user-ink px-3.5 py-2 text-sm whitespace-pre-wrap break-words">
-            {message.content}
+          <div className="flex items-end gap-1.5 max-w-[78%]">
+            <ForkButton messageId={message.id} side="right" />
+            <div className="rounded-2xl rounded-br-sm bg-ovo-user text-ovo-user-ink px-3.5 py-2 text-sm whitespace-pre-wrap break-words">
+              {message.content}
+            </div>
           </div>
         )}
       </div>
@@ -382,7 +275,7 @@ function ChatMessageBubbleImpl({ message, streaming }: Props) {
     streaming && hasAnyContent && lastSegment?.type === "text" && lastSegment.content.length > 0;
 
   return (
-    <div className="flex justify-start">
+    <div className="flex justify-start items-end gap-1.5 group">
       <div className="max-w-[82%] rounded-2xl rounded-bl-sm bg-ovo-assistant border border-ovo-border text-ovo-text px-3.5 py-2 text-sm whitespace-pre-wrap break-words">
         {showInitialDots ? (
           <span className="inline-flex gap-1 items-center text-ovo-muted">
@@ -402,6 +295,25 @@ function ChatMessageBubbleImpl({ message, streaming }: Props) {
             if (seg.type === "tool_result") {
               return <ToolResultBlock key={i} content={seg.content} />;
             }
+            if (seg.type === "attached_files") {
+              return (
+                <div key={i} className="flex flex-wrap gap-1.5 my-1">
+                  {seg.paths.map((p) => {
+                    const name = p.split("/").pop() ?? p;
+                    return (
+                      <span
+                        key={p}
+                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-ovo-chip border border-ovo-chip-border text-[11px] text-ovo-text"
+                        title={p}
+                      >
+                        <span>📎</span>
+                        <span className="truncate max-w-[220px] font-mono">{name}</span>
+                      </span>
+                    );
+                  })}
+                </div>
+              );
+            }
             return <span key={i}>{seg.content}</span>;
           })
           // [END]
@@ -413,6 +325,7 @@ function ChatMessageBubbleImpl({ message, streaming }: Props) {
           />
         )}
       </div>
+      {!streaming && hasAnyContent && <ForkButton messageId={message.id} side="left" />}
     </div>
   );
 }

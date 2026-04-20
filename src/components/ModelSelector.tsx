@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { ChevronDown, Check, Eye, Mic } from "lucide-react";
+import { ChevronDown, Check, Eye, Mic, Image as ImageIcon } from "lucide-react";
 import type { ModelCapability, OvoModel } from "../types/ovo";
 // [START] model_perf — import store for perf badges
 import { useModelPerfStore } from "../store/model_perf";
@@ -25,6 +25,9 @@ const CAPABILITY_META: Record<
 > = {
   vision: { icon: Eye, i18nKey: "models.capability.vision" },
   audio: { icon: Mic, i18nKey: "models.capability.audio" },
+  // [START] Phase 7 — text-to-image diffusion pipelines
+  image_gen: { icon: ImageIcon, i18nKey: "models.capability.image_gen" },
+  // [END]
 };
 
 function CapabilityBadges({
@@ -38,6 +41,7 @@ function CapabilityBadges({
   const keys: Array<Exclude<ModelCapability, "text">> = [];
   if (capabilities.includes("vision")) keys.push("vision");
   if (capabilities.includes("audio")) keys.push("audio");
+  if (capabilities.includes("image_gen")) keys.push("image_gen");
   if (keys.length === 0) return null;
   return (
     <span className="inline-flex gap-1 shrink-0">

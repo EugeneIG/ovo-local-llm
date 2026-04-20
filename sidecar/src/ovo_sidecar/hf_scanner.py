@@ -99,6 +99,36 @@ _AUDIO_MODEL_TYPES: frozenset[str] = frozenset({
 })
 
 
+# [START] Phase 7 — diffusion pipeline classes (all text-to-image capable).
+# These strings come from `model_index.json::_class_name`. A model reporting
+# one of these is surfaced with `image_gen` capability and excluded from the
+# chat model selector.
+_IMAGE_GEN_PIPELINE_CLASSES: frozenset[str] = frozenset({
+    "StableDiffusionPipeline",
+    "StableDiffusionXLPipeline",
+    "StableDiffusion3Pipeline",
+    "StableDiffusion3LatentPipeline",
+    "FluxPipeline",
+    "FluxImg2ImgPipeline",
+    "KandinskyPipeline",
+    "KandinskyV22Pipeline",
+    "KandinskyV22PriorPipeline",
+    "IFPipeline",
+    "LatentConsistencyModelPipeline",
+    "LCMPipeline",
+    "AuraFlowPipeline",
+    "PixArtAlphaPipeline",
+    "PixArtSigmaPipeline",
+    "HunyuanDiTPipeline",
+    "Kolors",
+    "LuminaText2ImgPipeline",
+    "WuerstchenCombinedPipeline",
+    "CogView4Pipeline",
+    "SanaPipeline",
+})
+# [END]
+
+
 def detect_capabilities(config: dict) -> tuple[str, ...]:
     """
     Decide which modalities a model supports from its HF config.json.
@@ -139,6 +169,25 @@ def detect_capabilities(config: dict) -> tuple[str, ...]:
         caps.append("vision")
     if has_audio:
         caps.append("audio")
+
+    # [START] Phase 7 — image generation capability.
+    # `_class_name` in model_index.json is the diffusers pipeline class. We
+    # treat ANY *Pipeline class as an image-gen candidate (LLMs only expose
+    # `model_type`, never `_class_name`), plus the explicit allow-list for
+    # newer non-"Pipeline"-suffixed shapes (Kolors, etc.).
+    #
+    # We also backstop with the synthetic `diffusion_pipeline` model_type that
+    # _build_scanned emits when it finds a model_index.json — that way users
+    # with a pipeline whose class string changed upstream still get surfaced.
+    class_name = str(config.get("_class_name") or "")
+    if (
+        class_name in _IMAGE_GEN_PIPELINE_CLASSES
+        or class_name.endswith("Pipeline")
+        or model_type == "diffusion_pipeline"
+    ):
+        caps.append("image_gen")
+    # [END]
+
     return tuple(caps)
 # [END]
 
@@ -168,13 +217,35 @@ def _build_scanned(
     source: str,
 ) -> ScannedModel | None:
     config_path = snapshot / "config.json"
-    if not config_path.exists():
+    # [START] Phase 7 — diffusion pipelines don't ship a top-level config.json.
+    # Fall back to model_index.json (the pipeline manifest) and synthesize a
+    # minimal config dict so the rest of the pipeline (capabilities / size)
+    # still works. Without this the scanner silently skipped every SDXL/Flux
+    # install, leaving the Image tab empty.
+    model_index_path = snapshot / "model_index.json"
+    config: dict
+    if config_path.exists():
+        try:
+            config = json.loads(config_path.read_text())
+        except (OSError, json.JSONDecodeError) as e:
+            logger.debug("skip %s: %s", snapshot, e)
+            return None
+    elif model_index_path.exists():
+        try:
+            model_index = json.loads(model_index_path.read_text())
+        except (OSError, json.JSONDecodeError) as e:
+            logger.debug("skip %s: %s", snapshot, e)
+            return None
+        config = {
+            "_class_name": model_index.get("_class_name"),
+            "_diffusers_version": model_index.get("_diffusers_version"),
+            # Mark as a diffusion synthetic so downstream heuristics know.
+            "model_type": "diffusion_pipeline",
+        }
+    else:
         return None
-    try:
-        config = json.loads(config_path.read_text())
-    except (OSError, json.JSONDecodeError) as e:
-        logger.debug("skip %s: %s", snapshot, e)
-        return None
+    # [END]
+
     files = [p for p in snapshot.rglob("*") if p.is_file()]
     size_bytes = sum(f.stat().st_size for f in files)
     return ScannedModel(
@@ -241,8 +312,24 @@ def scan_lmstudio(cache_root: Path) -> list[ScannedModel]:
 
 
 # [START] Combined scan + path resolver (used by all model-listing APIs)
+# [START] TTL cache — scan_all() does a full rglob + stat over every snapshot.
+# Caching for 15 seconds avoids blocking the asyncio event loop on repeated
+# calls within the same request cycle (resolve_path + resolve_capabilities
+# each call scan_all independently).
+import time as _time
+
+_scan_cache: tuple[list[ScannedModel], float] | None = None
+_SCAN_TTL = 15.0  # seconds
+
+
 def scan_all() -> list[ScannedModel]:
-    """Return HF + LM Studio models merged, HF wins on repo_id collision."""
+    """Return HF + LM Studio models merged, HF wins on repo_id collision.
+    Results are cached for _SCAN_TTL seconds to avoid repeated rglob+stat."""
+    global _scan_cache
+    now = _time.monotonic()
+    if _scan_cache is not None and (now - _scan_cache[1]) < _SCAN_TTL:
+        return _scan_cache[0]
+
     hf_models = scan(settings.hf_cache_dir)
     ls_models = scan_lmstudio(settings.lmstudio_cache_dir)
     seen = {m.repo_id for m in hf_models}
@@ -252,7 +339,15 @@ def scan_all() -> list[ScannedModel]:
             continue
         merged.append(m)
         seen.add(m.repo_id)
+    _scan_cache = (merged, now)
     return merged
+
+
+def invalidate_scan_cache() -> None:
+    """Force next scan_all() to re-scan. Call after model download/delete."""
+    global _scan_cache
+    _scan_cache = None
+# [END]
 
 
 def resolve_path(repo_id: str) -> Path | None:

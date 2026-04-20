@@ -14,6 +14,15 @@ import { ProjectContextSection } from "../components/ProjectContextSection";
 // [START] Phase 6.2b — MCP Servers section
 import { McpServersSection } from "../components/McpServersSection";
 // [END]
+// [START] Phase 6.4 — Skills section
+import { SkillsSection } from "../components/SkillsSection";
+// [END]
+// [START] Phase 8 — Persona section (md-backed personas)
+import { PersonaSection } from "../components/PersonaSection";
+// [END]
+// [START] Phase 8 — Feature flags section (global toggles)
+import { FeatureFlagsSection } from "../components/FeatureFlagsSection";
+// [END]
 // [START] Phase 6.2c — tool-call approval mode store
 import { useToolModeStore, type ToolMode } from "../store/tool_mode";
 // [END]
@@ -511,6 +520,60 @@ function ThemeSection() {
 }
 // [END]
 
+// [START] Phase R — Runtime management section.
+// Exposes the "reinstall Python runtime" escape hatch so users can recover
+// from a half-baked venv without needing to delete Application Support by
+// hand. Sidecar state drives the button label/disabled state.
+function RuntimeSection() {
+  const { t } = useTranslation();
+  const pushToast = useToastsStore((s) => s.push);
+  const health = useSidecarStore((s) => s.status.health);
+  const reinstall = useSidecarStore((s) => s.reinstallRuntime);
+  const busy = health === "bootstrapping" || health === "starting";
+
+  async function handleReinstall() {
+    if (busy) return;
+    const confirmed = window.confirm(t("sidecar.runtime.reinstall_confirm"));
+    if (!confirmed) return;
+    try {
+      await reinstall();
+    } catch (err) {
+      pushToast({
+        kind: "error",
+        message: String(err),
+      });
+    }
+  }
+
+  return (
+    <CollapsibleSection id="runtime" title={t("sidecar.runtime.label")}>
+      <div className="flex flex-col gap-3">
+        <p className="text-xs text-ovo-muted">
+          {t("sidecar.runtime.description")}
+        </p>
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex flex-col min-w-0">
+            <span className="text-sm text-ovo-text">
+              {t("sidecar.runtime.reinstall")}
+            </span>
+            <span className="text-xs text-ovo-muted">
+              {t("sidecar.runtime.reinstall_hint")}
+            </span>
+          </div>
+          <button
+            onClick={() => void handleReinstall()}
+            disabled={busy}
+            className="text-xs px-3 py-1.5 rounded-md border border-rose-500/40 text-rose-400 hover:bg-rose-500/10 disabled:opacity-50 disabled:cursor-not-allowed transition"
+          >
+            {busy ? t("sidecar.runtime.reinstalling") : t("sidecar.runtime.reinstall")}
+          </button>
+        </div>
+      </div>
+    </CollapsibleSection>
+  );
+}
+// [END]
+
 // ── Main pane ─────────────────────────────────────────────────────────────────
 export function SettingsPane() {
   const { t } = useTranslation();
@@ -603,6 +666,14 @@ export function SettingsPane() {
       {/* [END] */}
 
       <AdvancedSection ports={ports} models={models} />
+
+      {/* [START] Phase R — AI runtime reinstall */}
+      <RuntimeSection />
+      {/* [END] */}
+
+      {/* [START] Phase 8 — global feature flag toggles */}
+      <FeatureFlagsSection />
+      {/* [END] */}
 
       {/* [START] Chat input section — streaming send mode + reply sound */}
       <CollapsibleSection id="chat_input" title={t("settings.chat_input.section_title")}>
@@ -787,6 +858,14 @@ export function SettingsPane() {
 
       {/* [START] Phase 6.1 — Project Context section */}
       <ProjectContextSection />
+      {/* [END] */}
+
+      {/* [START] Phase 8 — Persona section (.ovo/personas/*.md catalog) */}
+      <PersonaSection />
+      {/* [END] */}
+
+      {/* [START] Phase 6.4 — Skills section (.ovo/skills/*.md catalog) */}
+      <SkillsSection />
       {/* [END] */}
 
       {/* [START] Phase 6.2b — MCP Servers section */}

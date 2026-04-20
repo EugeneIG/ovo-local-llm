@@ -6,7 +6,7 @@
   "build": {
     "beforeDevCommand": "npm run dev",
     "devUrl": "http://localhost:1420",
-    "beforeBuildCommand": "npm run build",
+    "beforeBuildCommand": "npm run bundle:all && npm run build",
     "frontendDist": "../dist"
   },
   "app": {
@@ -38,7 +38,7 @@
       }
     ],
     "security": {
-      "csp": null
+      "csp": "default-src 'self' ipc: http://ipc.localhost; img-src 'self' data: blob: https: http://127.0.0.1:* http://localhost:*; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-eval' 'wasm-unsafe-eval' blob:; connect-src 'self' http://127.0.0.1:* http://localhost:* ws://127.0.0.1:* ws://localhost:* ipc: http://ipc.localhost; worker-src 'self' blob:; font-src 'self' data:; object-src 'none'; frame-src 'self'; media-src 'self' data: blob: http://127.0.0.1:* http://localhost:*"
     },
     "macOSPrivateApi": true
   },
@@ -53,13 +53,18 @@
       "icons/icon.ico"
     ],
     "category": "DeveloperTool",
-    "shortDescription": "Local MLX LLM runtime with desktop owl mascot",
-    "longDescription": "OVO runs MLX-format LLMs locally on Apple Silicon with a pixel-art owl mascot that wanders your desktop. HuggingFace-native, Ollama/OpenAI API compatible, optional Claude Code integration.",
+    "shortDescription": "All the LLMs. On device.",
+    "longDescription": "OVO runs every open LLM locally on Apple Silicon — MLX, GGUF via transformers, VLM, and more. Ships with a reactive SVG owl mascot that mirrors your coding state. HuggingFace-native, Ollama/OpenAI API compatible, optional Claude Code integration.",
     "macOS": {
       "minimumSystemVersion": "13.0",
       "entitlements": null,
-      "exceptionDomain": ""
+      "exceptionDomain": "",
+      "infoPlist": "Info.plist"
     },
+    "resources": [
+      "resources/sidecar/**/*",
+      "resources/bin/*"
+    ],
     "externalBin": []
   },
   "plugins": {}

@@ -51,3 +51,17 @@ Thumbs.db
 ovo-data/
 *.sqlite
 *.sqlite-journal
+
+# Generated bundle inputs — fetched/copied at build time.
+# `src-tauri/resources/bin/` holds the platform-specific uv binary downloaded
+# by scripts/fetch-uv.sh before `tauri build`. `src-tauri/resources/sidecar/`
+# is a pruned copy of sidecar/ produced by scripts/bundle-sidecar-resources.sh.
+# Keeping them out of git avoids the 45 MB uv blob and lets build hosts
+# regenerate both deterministically from the canonical sources.
+src-tauri/resources/bin/
+src-tauri/resources/sidecar/
+
+# Personal working notes — useful for internal sessions, not for public repo.
+next_session_handover.*
+tasks/
+docs/internal/

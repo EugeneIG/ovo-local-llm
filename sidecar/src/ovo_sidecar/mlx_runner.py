@@ -147,9 +147,41 @@ class MlxRunner:
         self._active_cancel: threading.Event | None = None
         self._active_thread: threading.Thread | None = None
         # [END]
+        # [START] Stream serialization — prevents concurrent _astream calls from
+        # clobbering each other's _active_cancel / _active_thread handles.
+        self._stream_lock = asyncio.Lock()
+        # [END]
+        # [START] Phase 4 fix — priority tagging.
+        # FIM inline completion marks its stream as low-priority. When a chat
+        # or agent turn starts it calls interrupt_low_priority() which cancels
+        # the in-flight low-priority stream so the user-facing request isn't
+        # stuck waiting on ghost text to finish generating.
+        self._active_is_low_priority: bool = False
+        # [END]
         from ovo_sidecar import model_lifecycle
 
-        model_lifecycle.register_unloader(self.unload)
+        model_lifecycle.register_unloader(self.unload, slot="llm")
+
+    def interrupt_low_priority(self) -> None:
+        """Cancel the active stream if it's tagged low-priority (FIM).
+
+        Called by chat / agent endpoints before they try to acquire the
+        stream lock — otherwise a mid-flight 128-token FIM generation can
+        make the user's typed message wait several seconds for the ghost
+        text to finish before the chat stream even starts prefill.
+        """
+        if self._active_is_low_priority and self._active_cancel is not None:
+            self._active_cancel.set()
+
+    def is_busy(self) -> bool:
+        """True when a stream is currently active on this runner.
+
+        Phase 4 FIM completion checks this before kicking off — chat and
+        agent turns take priority over ghost text, so when the user asks
+        the agent something we skip inline completions instead of making
+        them wait on a stream_lock that the chat turn needs.
+        """
+        return self._stream_lock.locked()
 
     def unload(self) -> None:
         """Drop cached model + force Metal cache release.
@@ -185,7 +217,7 @@ class MlxRunner:
             self.unload()
             from ovo_sidecar import model_lifecycle
 
-            model_lifecycle.unload_others(skip=self.unload)
+            model_lifecycle.unload_others(skip=self.unload, slot="llm")
             # [END]
             logger.info("loading MLX model: %s", ref_str)
             loaded = await asyncio.to_thread(self._load, ref_str)
@@ -193,28 +225,38 @@ class MlxRunner:
             return loaded
 
     def _load(self, ref: str) -> LoadedModel:
-        from mlx_lm import load  # heavy, imported lazily
+        # [START] Phase R — strict=False load for broad model coverage.
+        # mlx_lm.load() is a convenience wrapper that hardcodes
+        # strict=True, which rejects community quants carrying extra
+        # quantization metadata the architecture class doesn't define
+        # (e.g. Gemma 3n "supergemma" variants with
+        # per_layer_model_projection.biases/.scales). Drop down to the
+        # lower-level load_model / load_tokenizer API so we can pass
+        # strict=False and accept any Apple-compatible checkpoint.
+        from mlx_lm.utils import load_model, load_tokenizer, hf_repo_to_path
 
-        path: Path | None = None
         maybe_path = Path(ref)
         if maybe_path.exists():
             path = maybe_path
-
-        # [START] inject per-module quantization overrides for mixed-precision
-        # community quants; no-op for standard uniform-bits models
-        model_config: dict | None = None
-        if path is not None:
-            patched_quant = _infer_quant_overrides(path)
-            if patched_quant is not None:
-                model_config = {"quantization": patched_quant}
-        # [END]
-
-        target = ref if path is None else str(path)
-        if model_config is not None:
-            model, tokenizer = load(target, model_config=model_config)
         else:
-            model, tokenizer = load(target)
+            # Resolves to the local HF snapshot dir (and fetches if absent).
+            path = hf_repo_to_path(ref)
+
+        # Inject per-module quantization overrides for mixed-precision
+        # community quants; no-op for standard uniform-bits models.
+        model_config: dict = {}
+        patched_quant = _infer_quant_overrides(path)
+        if patched_quant is not None:
+            model_config["quantization"] = patched_quant
+
+        model, _loaded_config = load_model(
+            path,
+            strict=False,
+            model_config=model_config,
+        )
+        tokenizer = load_tokenizer(path)
         return LoadedModel(ref=ref, snapshot_path=path, model=model, tokenizer=tokenizer)
+        # [END]
 
     async def stream_chat(
         self,
@@ -225,10 +267,14 @@ class MlxRunner:
         top_p: float | None = None,
         repetition_penalty: float | None = None,
     ) -> AsyncIterator[GenerationChunk]:
+        # Preempt any active low-priority (FIM) stream so the user's
+        # chat / agent turn doesn't queue behind ghost-text generation.
+        self.interrupt_low_priority()
         loaded = await self.ensure_loaded(model_ref)
         prompt = self._apply_chat_template(loaded.tokenizer, messages)
         async for chunk in self._astream(
-            loaded, prompt, max_tokens, temperature, top_p, repetition_penalty
+            loaded, prompt, max_tokens, temperature, top_p, repetition_penalty,
+            is_background=False,
         ):
             yield chunk
 
@@ -262,10 +308,12 @@ class MlxRunner:
         temperature: float | None = None,
         top_p: float | None = None,
         repetition_penalty: float | None = None,
+        is_background: bool = False,
     ) -> AsyncIterator[GenerationChunk]:
         loaded = await self.ensure_loaded(model_ref)
         async for chunk in self._astream(
-            loaded, prompt, max_tokens, temperature, top_p, repetition_penalty
+            loaded, prompt, max_tokens, temperature, top_p, repetition_penalty,
+            is_background=is_background,
         ):
             yield chunk
 
@@ -287,6 +335,27 @@ class MlxRunner:
         temperature: float | None,
         top_p: float | None,
         repetition_penalty: float | None = None,
+        is_background: bool = False,
+    ) -> AsyncIterator[GenerationChunk]:
+        # [START] Serialize concurrent stream requests so _active_cancel /
+        # _active_thread are never clobbered by a second caller.
+        async with self._stream_lock:
+            async for chunk in self._astream_inner(
+                loaded, prompt, max_tokens, temperature, top_p, repetition_penalty,
+                is_background=is_background,
+            ):
+                yield chunk
+        # [END]
+
+    async def _astream_inner(
+        self,
+        loaded: LoadedModel,
+        prompt: str,
+        max_tokens: int,
+        temperature: float | None,
+        top_p: float | None,
+        repetition_penalty: float | None = None,
+        is_background: bool = False,
     ) -> AsyncIterator[GenerationChunk]:
         from mlx_lm import stream_generate
 
@@ -362,6 +431,7 @@ class MlxRunner:
         worker_thread = threading.Thread(target=worker, daemon=True, name="mlx-stream")
         self._active_cancel = cancelled
         self._active_thread = worker_thread
+        self._active_is_low_priority = is_background
         worker_thread.start()
         # [END]
 
@@ -381,6 +451,7 @@ class MlxRunner:
             if self._active_cancel is cancelled:
                 self._active_cancel = None
                 self._active_thread = None
+                self._active_is_low_priority = False
         # [END]
 
 

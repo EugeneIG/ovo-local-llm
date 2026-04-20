@@ -1,10 +1,11 @@
 import { useTranslation } from "react-i18next";
-import { MessageSquare, Code2, Image as ImageIcon, BookOpen, Package, Settings, Info } from "lucide-react";
+import { MessageSquare, Code2, Image as ImageIcon, BookOpen, Package, Settings, Info, Gauge } from "lucide-react";
 import type { ComponentType, SVGProps } from "react";
 import { RecentsPanel } from "./RecentsPanel";
+import { CodeRecentsPanel } from "./code/CodeRecentsPanel";
 import { useThemeStore } from "../store/theme";
 
-export type NavKey = "chat" | "code" | "image" | "wiki" | "models" | "settings" | "about";
+export type NavKey = "chat" | "code" | "image" | "wiki" | "models" | "fit" | "settings" | "about";
 
 interface NavItem {
   key: NavKey;
@@ -19,8 +20,11 @@ const NAV_ITEMS: NavItem[] = [
 
 // [START] Secondary bottom-dock items — models/wiki/settings/info rendered as
 // small icon-only buttons at the bottom center of the sidebar (no labels).
+// `fit` (Hardware Fit & Recommendations) slots in next to `models` because
+// both orbit the same "what can I run?" question from different angles.
 const BOTTOM_ITEMS: NavItem[] = [
   { key: "models", icon: Package },
+  { key: "fit", icon: Gauge },
   { key: "wiki", icon: BookOpen },
   { key: "settings", icon: Settings },
   { key: "about", icon: Info },
@@ -85,9 +89,10 @@ export function Sidebar({ active, onSelect }: SidebarProps) {
           );
         })}
       </ul>
-      {/* [START] Recents panel — only visible when chat tab is active */}
+      {/* [START] Recents panel — context-dependent on active tab */}
       <div className="flex-1 overflow-y-auto min-h-0">
         {active === "chat" && <RecentsPanel />}
+        {active === "code" && <CodeRecentsPanel />}
       </div>
       {/* [END] */}
 

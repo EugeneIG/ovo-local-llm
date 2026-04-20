@@ -22,6 +22,8 @@ interface SessionRow {
   pinned: number;
   context_tokens: number;
   compacting: number;
+  parent_session_id: string | null;
+  parent_message_id: string | null;
   created_at: number;
   updated_at: number;
 }
@@ -58,6 +60,8 @@ function rowToSession(r: SessionRow): Session {
     pinned: r.pinned === 1,
     context_tokens: r.context_tokens,
     compacting: r.compacting === 1,
+    parent_session_id: r.parent_session_id ?? null,
+    parent_message_id: r.parent_message_id ?? null,
     created_at: r.created_at,
     updated_at: r.updated_at,
   };
@@ -85,6 +89,10 @@ export interface CreateSessionInput {
   model_ref?: string | null;
   system_prompt?: string | null;
   compact_strategy?: CompactStrategy;
+  // [START] Phase 8 — fork lineage (set by forkSession; manual callers leave undefined)
+  parent_session_id?: string | null;
+  parent_message_id?: string | null;
+  // [END]
 }
 
 export async function createSession(input: CreateSessionInput = {}): Promise<Session> {
@@ -99,25 +107,99 @@ export async function createSession(input: CreateSessionInput = {}): Promise<Ses
     pinned: false,
     context_tokens: 0,
     compacting: false,
+    parent_session_id: input.parent_session_id ?? null,
+    parent_message_id: input.parent_message_id ?? null,
     created_at: now,
     updated_at: now,
   };
   await db.execute(
     `INSERT INTO sessions
-     (id, title, model_ref, system_prompt, compact_strategy, pinned, context_tokens, compacting, created_at, updated_at)
-     VALUES ($1, $2, $3, $4, $5, 0, 0, 0, $6, $7)`,
+     (id, title, model_ref, system_prompt, compact_strategy, pinned, context_tokens, compacting, parent_session_id, parent_message_id, created_at, updated_at)
+     VALUES ($1, $2, $3, $4, $5, 0, 0, 0, $6, $7, $8, $9)`,
     [
       session.id,
       session.title,
       session.model_ref,
       session.system_prompt,
       session.compact_strategy,
+      session.parent_session_id,
+      session.parent_message_id,
       session.created_at,
       session.updated_at,
     ],
   );
   return session;
 }
+
+// [START] Phase 8 — forkSession: clone a session up to (and including) the
+// chosen message into a fresh session. The new session inherits the source's
+// model/system_prompt/compact_strategy and records `parent_session_id` +
+// `parent_message_id` so the sidebar can show a `↳ branched from` indicator.
+// Live messages only — compacted summaries are intentionally skipped so the
+// fork starts with a clean visible history.
+export interface ForkSessionInput {
+  src_session_id: string;
+  fork_message_id: string;
+  /** Optional title for the new session — defaults to "[branch] {src.title}". */
+  title?: string;
+}
+
+export async function forkSession(input: ForkSessionInput): Promise<Session> {
+  const src = await getSession(input.src_session_id);
+  if (!src) throw new Error(`source session not found: ${input.src_session_id}`);
+
+  // Pull the fork-point message to get its created_at — anything ≤ that time
+  // is included in the new session. Using created_at (not row order) lets the
+  // copy match listLiveMessages' ordering exactly.
+  const db = await getDb();
+  const pivot = await db.select<MessageRow[]>(
+    `SELECT * FROM messages WHERE id = $1 AND session_id = $2 LIMIT 1`,
+    [input.fork_message_id, input.src_session_id],
+  );
+  if (pivot.length === 0) {
+    throw new Error(`fork message not found: ${input.fork_message_id}`);
+  }
+  const pivotTs = pivot[0].created_at;
+
+  const branch = await createSession({
+    title: input.title ?? (src.title ? `↳ ${src.title}` : "↳ branch"),
+    model_ref: src.model_ref,
+    system_prompt: src.system_prompt,
+    compact_strategy: src.compact_strategy,
+    parent_session_id: src.id,
+    parent_message_id: input.fork_message_id,
+  });
+
+  // Copy live messages with created_at ≤ pivot — preserve order by reusing the
+  // original timestamps (small + offset to keep them strictly past `branch.created_at`
+  // would risk collisions; SQLite ORDER BY ASC remains stable).
+  const rows = await db.select<MessageRow[]>(
+    `SELECT * FROM messages
+       WHERE session_id = $1 AND compacted = 0 AND created_at <= $2
+       ORDER BY created_at ASC`,
+    [input.src_session_id, pivotTs],
+  );
+  for (const r of rows) {
+    await db.execute(
+      `INSERT INTO messages
+        (id, session_id, role, content, attachments_json, prompt_tokens, generation_tokens, compacted, created_at)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, 0, $8)`,
+      [
+        newId(),
+        branch.id,
+        r.role,
+        r.content,
+        r.attachments_json,
+        r.prompt_tokens,
+        r.generation_tokens,
+        r.created_at,
+      ],
+    );
+  }
+
+  return branch;
+}
+// [END]
 
 export async function listSessions(): Promise<Session[]> {
   const db = await getDb();

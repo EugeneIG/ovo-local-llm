@@ -10,10 +10,11 @@ import { ModelSelector } from "../components/ModelSelector";
 import { ChatInput, type ChatInputHandle } from "../components/ChatInput";
 import { ModelProfileSelector } from "../components/ModelProfileSelector";
 import { SystemStatusPopover } from "../components/SystemStatusPopover";
-import { HardDrive } from "lucide-react";
+import { SidecarOfflineCard } from "../components/SidecarOfflineCard";
+import { Activity } from "lucide-react";
 import { ChatMessageBubble } from "../components/ChatMessageBubble";
 import { Owl } from "../components/Owl";
-import type { OvoModel } from "../types/ovo";
+import type { OvoModel, Message } from "../types/ovo";
 
 export function ChatPane() {
   const { t } = useTranslation();
@@ -234,37 +235,6 @@ export function ChatPane() {
         onScroll={onListScroll}
         className="flex-1 overflow-y-auto"
       >
-        {/* [START] sidecar banner — sticky at top whenever the sidecar isn't healthy */}
-        {!sidecarReady && (
-          <button
-            type="button"
-            onClick={() => setHddOpen(true)}
-            className={`sticky top-0 z-10 w-full px-4 py-3 flex items-center gap-3 border-b text-left transition ${
-              status.health === "failed"
-                ? "bg-rose-500/10 border-rose-500/30 hover:bg-rose-500/15"
-                : "bg-ovo-surface border-ovo-border hover:bg-ovo-surface-solid"
-            }`}
-          >
-            <HardDrive
-              className={`w-5 h-5 shrink-0 ${
-                status.health === "starting"
-                  ? "animate-pulse text-amber-400"
-                  : status.health === "failed"
-                    ? "text-rose-500"
-                    : "text-ovo-muted"
-              }`}
-              aria-hidden
-            />
-            <div className="text-sm text-ovo-text">
-              {status.health === "starting"
-                ? t("sidecar.banner.starting")
-                : status.health === "failed"
-                  ? t("sidecar.banner.failed")
-                  : t("sidecar.banner.stopped")}
-            </div>
-          </button>
-        )}
-        {/* [END] */}
         <div className="px-4 py-4 h-full">
           {modelsError ? (
             <div className="h-full flex items-center justify-center text-sm text-rose-600">
@@ -273,17 +243,47 @@ export function ChatPane() {
           ) : !hasMessages ? (
             <div className="h-full flex flex-col items-center justify-center gap-4 text-ovo-muted">
               <Owl state="idle" size="lg" />
-              <p className="text-sm">{sidecarReady ? t("chat.empty") : t(`sidecar.status.${status.health}`)}</p>
+              {sidecarReady ? (
+                <p className="text-sm">{t("chat.empty")}</p>
+              ) : (
+                <SidecarOfflineCard
+                  health={status.health}
+                  onStart={() => {
+                    void useSidecarStore.getState().restart();
+                  }}
+                />
+              )}
             </div>
           ) : (
             <div className="flex flex-col gap-3 max-w-3xl mx-auto w-full">
-              {messages.map((m, i) => (
-                <ChatMessageBubble
-                  key={m.id}
-                  message={m}
-                  streaming={streaming && i === messages.length - 1}
-                />
-              ))}
+              {/* [START] Phase 5 — group assistant tool_use turns with their
+                  tool_result follow-ups so the timeline reads as one unit
+                  instead of four disconnected bubbles. A group starts with
+                  any assistant message and absorbs every immediately-following
+                  `tool_result` (user-role bubble whose content is a pure
+                  <tool_result> block) until a non-tool_result message is
+                  encountered. Inside a group we use tight `gap-1`; between
+                  groups we use the usual `gap-3` via the outer container. */}
+              {groupTurns(messages).map((group, gIdx) => {
+                const lastMsgIdx = group[group.length - 1]
+                  ? messages.indexOf(group[group.length - 1])
+                  : -1;
+                return (
+                  <div
+                    key={group[0]?.id ?? `g-${gIdx}`}
+                    className="flex flex-col gap-1"
+                  >
+                    {group.map((m) => (
+                      <ChatMessageBubble
+                        key={m.id}
+                        message={m}
+                        streaming={streaming && messages.indexOf(m) === messages.length - 1 && lastMsgIdx === messages.length - 1}
+                      />
+                    ))}
+                  </div>
+                );
+              })}
+              {/* [END] */}
             </div>
           )}
         </div>
@@ -330,8 +330,8 @@ export function ChatPane() {
             <button
               type="button"
               onClick={() => setHddOpen((v) => !v)}
-              title="System status"
-              aria-label="System status"
+              title={t("chat.system_status")}
+              aria-label={t("chat.system_status")}
               aria-pressed={hddOpen}
               className={`h-[40px] w-[40px] rounded-lg border border-ovo-border flex items-center justify-center transition ${
                 hddOpen
@@ -339,7 +339,7 @@ export function ChatPane() {
                   : "bg-ovo-surface-solid text-ovo-muted hover:bg-ovo-bg hover:text-ovo-text"
               }`}
             >
-              <HardDrive className="w-4 h-4" aria-hidden />
+              <Activity className="w-4 h-4" aria-hidden />
             </button>
           </div>
         }
@@ -348,3 +348,26 @@ export function ChatPane() {
     </div>
   );
 }
+
+// [START] Phase 5 — turn grouping for pair rendering.
+// A group = one non-tool-result message (usually assistant) + every
+// immediately-following tool_result (user-role bubbles whose content begins
+// with `<tool_result>`). Keeping the pair visually tight makes tool calls
+// read as a single step instead of split bubbles.
+function groupTurns(messages: Message[]): Message[][] {
+  const groups: Message[][] = [];
+  let current: Message[] = [];
+  const isToolResult = (m: Message) =>
+    m.role === "user" && m.content.trimStart().startsWith("<tool_result>");
+  for (const m of messages) {
+    if (isToolResult(m) && current.length > 0) {
+      current.push(m);
+      continue;
+    }
+    if (current.length > 0) groups.push(current);
+    current = [m];
+  }
+  if (current.length > 0) groups.push(current);
+  return groups;
+}
+// [END]

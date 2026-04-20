@@ -82,7 +82,7 @@ fn make_notification(method: &str, params: Value) -> Value {
 /// Write one JSON-RPC message to stdin (newline-delimited).
 fn send_message(stdin: &Arc<Mutex<ChildStdin>>, msg: &Value) -> Result<(), String> {
     let line = serde_json::to_string(msg).map_err(|e| e.to_string())?;
-    let mut guard = stdin.lock().unwrap();
+    let mut guard = stdin.lock().unwrap_or_else(|e| e.into_inner());
     writeln!(guard, "{line}").map_err(|e| e.to_string())?;
     guard.flush().map_err(|e| e.to_string())
 }
@@ -130,7 +130,9 @@ fn spawn_reader(stdout: std::process::ChildStdout, pending: PendingMap) {
             };
 
             let sender = {
-                let mut map = pending.lock().unwrap();
+                // [START] Recover from poisoned mutex instead of panicking —
+                // prevents a reader-thread panic from cascading into the Tokio runtime.
+                let mut map = pending.lock().unwrap_or_else(|e| e.into_inner());
                 map.remove(&id)
             };
 
@@ -167,14 +169,14 @@ async fn send_request(
 ) -> Result<Value, String> {
     let (tx, rx) = oneshot::channel::<Result<Value, String>>();
     {
-        let mut map = pending.lock().unwrap();
+        let mut map = pending.lock().unwrap_or_else(|e| e.into_inner());
         map.insert(id, tx);
     }
 
     let msg = make_request(id, method, params);
     if let Err(e) = send_message(stdin, &msg) {
         // Clean up the dangling sender before returning.
-        pending.lock().unwrap().remove(&id);
+        pending.lock().unwrap_or_else(|e| e.into_inner()).remove(&id);
         return Err(e);
     }
 
@@ -225,7 +227,14 @@ pub async fn mcp_start(
         }
     });
 
-    let result = send_request(&stdin, &pending, 1, "initialize", init_params).await?;
+    // [START] Timeout guard — if the MCP server hangs during handshake the
+    // frontend invoke() would block forever. 15 s is generous for a local spawn.
+    let result = tokio::time::timeout(
+        std::time::Duration::from_secs(15),
+        send_request(&stdin, &pending, 1, "initialize", init_params),
+    )
+    .await
+    .map_err(|_| "initialize timed out (15s)".to_string())??;
 
     // After initialize response, send the required initialized notification.
     let notif = make_notification("notifications/initialized", json!({}));
@@ -235,7 +244,12 @@ pub async fn mcp_start(
     // [END]
 
     // [START] tools/list
-    let tools_result = send_request(&stdin, &pending, 2, "tools/list", json!({})).await?;
+    let tools_result = tokio::time::timeout(
+        std::time::Duration::from_secs(15),
+        send_request(&stdin, &pending, 2, "tools/list", json!({})),
+    )
+    .await
+    .map_err(|_| "tools/list timed out (15s)".to_string())??;
 
     let tools: Vec<McpToolInfo> = tools_result
         .get("tools")
@@ -269,7 +283,7 @@ pub async fn mcp_start(
         error: None,
     };
 
-    state.servers.lock().unwrap().insert(server_id, server);
+    state.servers.lock().unwrap_or_else(|e| e.into_inner()).insert(server_id, server);
     Ok(tools)
 }
 
@@ -283,7 +297,7 @@ pub async fn mcp_call(
 ) -> Result<Value, String> {
     // [START] mcp_call — extract handles then drop the lock before awaiting
     let (stdin, pending, id) = {
-        let mut servers = state.servers.lock().unwrap();
+        let mut servers = state.servers.lock().unwrap_or_else(|e| e.into_inner());
         let server = servers
             .get_mut(&server_id)
             .ok_or_else(|| format!("server not found: {server_id}"))?;
@@ -307,10 +321,10 @@ pub async fn mcp_stop(
     server_id: String,
     state: tauri::State<'_, McpState>,
 ) -> Result<(), String> {
-    let server = state.servers.lock().unwrap().remove(&server_id);
+    let server = state.servers.lock().unwrap_or_else(|e| e.into_inner()).remove(&server_id);
     if let Some(srv) = server {
         // Kill the child. If it already exited, ignore the error.
-        let _ = srv._child.lock().unwrap().kill();
+        let _ = srv._child.lock().unwrap_or_else(|e| e.into_inner()).kill();
         log::info!("mcp: stopped server {server_id}");
     }
     Ok(())
@@ -319,7 +333,7 @@ pub async fn mcp_stop(
 /// Return runtime status for all tracked MCP servers.
 #[tauri::command]
 pub fn mcp_list(state: tauri::State<'_, McpState>) -> Vec<McpServerStatus> {
-    let servers = state.servers.lock().unwrap();
+    let servers = state.servers.lock().unwrap_or_else(|e| e.into_inner());
     servers
         .iter()
         .map(|(id, srv)| {
@@ -327,7 +341,7 @@ pub fn mcp_list(state: tauri::State<'_, McpState>) -> Vec<McpServerStatus> {
             let running = srv
                 ._child
                 .lock()
-                .unwrap()
+                .unwrap_or_else(|e| e.into_inner())
                 .try_wait()
                 .map(|status| status.is_none())
                 .unwrap_or(false);

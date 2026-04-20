@@ -19,7 +19,12 @@ class Settings(BaseSettings):
 
     default_model: str | None = None
     default_context_length: int = 4096
-    max_tokens_cap: int = 4096
+    # [START] Phase 8 — raise max generation cap. 4096 silently truncated long
+    # agent answers (Plan docs, full-file rewrites) with no error frame. 16384
+    # is ~32 KB of Korean text — enough for Implementation Plan md output.
+    # User can override via /ovo/settings PATCH if they need more.
+    max_tokens_cap: int = 16384
+    # [END]
 
     expose_to_network: bool = False
 
@@ -42,8 +47,17 @@ class Settings(BaseSettings):
     def chats_db_path(self) -> Path:
         return self.data_dir / "chats.sqlite"
 
+    # [START] Phase 7 — per-user images output dir for diffusion runner.
+    @property
+    def images_dir(self) -> Path:
+        return self.data_dir / "images"
+    # [END]
+
     def ensure_dirs(self) -> None:
         self.data_dir.mkdir(parents=True, exist_ok=True)
+        # [START] Phase 7 — ensure images dir exists before first save.
+        self.images_dir.mkdir(parents=True, exist_ok=True)
+        # [END]
 
 
 settings = Settings()

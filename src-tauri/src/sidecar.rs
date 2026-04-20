@@ -9,6 +9,7 @@ use tauri_plugin_shell::process::{CommandChild, CommandEvent};
 use tauri_plugin_shell::ShellExt;
 
 pub const STATUS_EVENT: &str = "sidecar://status";
+pub const BOOTSTRAP_LOG_EVENT: &str = "sidecar://bootstrap/log";
 
 /// Three FastAPI ports served by the Python sidecar.
 /// Must stay in sync with `sidecar/src/ovo_sidecar/config.py` defaults.
@@ -33,6 +34,9 @@ impl Default for SidecarPorts {
 #[serde(rename_all = "snake_case")]
 pub enum SidecarHealth {
     Stopped,
+    /// First-run runtime install: `uv sync` is creating the Python venv in the
+    /// user's Application Support directory. UI shows progress modal.
+    Bootstrapping,
     Starting,
     Healthy,
     Failed,
@@ -45,6 +49,9 @@ pub struct SidecarStatus {
     pub pid: Option<u32>,
     pub message: Option<String>,
     pub healthy_apis: Vec<String>,
+    /// Last stderr line emitted by `uv sync` during bootstrap. Cleared once
+    /// health transitions away from Bootstrapping.
+    pub bootstrap_progress: Option<String>,
 }
 
 pub struct SidecarState {
@@ -55,6 +62,10 @@ pub struct SidecarState {
     // no longer matches the current one — prevents a stale Terminated event
     // from a killed child clobbering the freshly-spawned child's status.
     generation: AtomicU64,
+    // [START] Auto-restart limiter — tracks consecutive crash restarts.
+    // Resets to 0 on successful health check. Caps at 3 to prevent infinite loops.
+    auto_restart_count: AtomicU64,
+    // [END]
 }
 
 impl SidecarState {
@@ -67,14 +78,71 @@ impl SidecarState {
                 pid: None,
                 message: None,
                 healthy_apis: vec![],
+                bootstrap_progress: None,
             }),
             generation: AtomicU64::new(0),
+            auto_restart_count: AtomicU64::new(0),
         }
     }
 
     pub fn snapshot(&self) -> SidecarStatus {
         self.status.lock().unwrap().clone()
     }
+}
+
+// [START] Phase R — runtime install layout.
+// Venv lives in the user's Application Support directory so it survives app
+// upgrades and sits outside the signed `.app` bundle (the bundle is read-only
+// on release builds — we can never write into Contents/Resources).
+fn user_runtime_dir(app: &AppHandle) -> Option<PathBuf> {
+    app.path().app_data_dir().ok().map(|d| d.join("runtime"))
+}
+
+fn user_venv_path(app: &AppHandle) -> Option<PathBuf> {
+    user_runtime_dir(app).map(|d| d.join("sidecar-venv"))
+}
+
+fn user_venv_sidecar_bin(app: &AppHandle) -> Option<PathBuf> {
+    user_venv_path(app).map(|v| v.join("bin").join("ovo-sidecar"))
+}
+
+fn bundled_sidecar_source(app: &AppHandle) -> Option<PathBuf> {
+    let resource_dir = app.path().resource_dir().ok()?;
+    // Tauri flattens `resources/sidecar/**` into `Contents/Resources/resources/sidecar/`.
+    let p = resource_dir.join("resources").join("sidecar");
+    if p.exists() { Some(p) } else { None }
+}
+
+fn bundled_uv_binary(app: &AppHandle) -> Option<PathBuf> {
+    let resource_dir = app.path().resource_dir().ok()?;
+    let p = resource_dir
+        .join("resources")
+        .join("bin")
+        .join("uv-aarch64-apple-darwin");
+    if p.exists() { Some(p) } else { None }
+}
+
+/// Root where `uv sync` should create the venv. We pin this via
+/// `UV_PROJECT_ENVIRONMENT` so the venv location is deterministic regardless
+/// of uv's normal project-root discovery (which would pick the bundled
+/// read-only sidecar dir).
+fn resolve_venv_env(app: &AppHandle) -> Option<(PathBuf, PathBuf)> {
+    let venv = user_venv_path(app)?;
+    if let Some(parent) = venv.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    let src = bundled_sidecar_source(app)?;
+    Some((venv, src))
+}
+// [END]
+
+/// What `resolve_command` decided to spawn.
+enum SpawnMode {
+    /// User venv is ready — run the sidecar executable directly.
+    Run(tauri_plugin_shell::process::Command),
+    /// Venv missing — run `uv sync` to create it. On successful termination
+    /// the orchestrator recursively re-spawns into Run mode.
+    Bootstrap(tauri_plugin_shell::process::Command),
 }
 
 // [START] managed sidecar lifecycle — spawn, health monitor, kill on exit
@@ -90,24 +158,40 @@ pub fn spawn(app: AppHandle) {
     };
     let ports = state.snapshot().ports;
 
-    let Some(command) = resolve_command(&app) else {
+    let Some(mode) = resolve_command(&app) else {
         update_status(&app, |s| {
             s.health = SidecarHealth::Failed;
-            s.message = Some("sidecar command not found (no bundle, no dev script)".into());
+            s.message = Some(
+                "sidecar command not found — runtime missing and no bundle/dev fallback".into(),
+            );
         });
         return;
     };
 
-    update_status(&app, |s| {
+    match mode {
+        SpawnMode::Run(cmd) => spawn_run(&app, cmd, ports),
+        SpawnMode::Bootstrap(cmd) => spawn_bootstrap(app.clone(), cmd),
+    }
+}
+
+fn spawn_run(
+    app: &AppHandle,
+    command: tauri_plugin_shell::process::Command,
+    ports: SidecarPorts,
+) {
+    let Some(state) = app.try_state::<SidecarState>() else { return };
+
+    update_status(app, |s| {
         s.health = SidecarHealth::Starting;
         s.message = None;
         s.healthy_apis.clear();
+        s.bootstrap_progress = None;
     });
 
     let (mut rx, child) = match command.spawn() {
         Ok(r) => r,
         Err(e) => {
-            update_status(&app, |s| {
+            update_status(app, |s| {
                 s.health = SidecarHealth::Failed;
                 s.message = Some(format!("spawn failed: {e}"));
             });
@@ -121,7 +205,7 @@ pub fn spawn(app: AppHandle) {
         let mut guard = state.child.lock().unwrap();
         *guard = Some(child);
     }
-    update_status(&app, |s| s.pid = Some(pid));
+    update_status(app, |s| s.pid = Some(pid));
 
     // Log pump
     let app_logs = app.clone();
@@ -154,6 +238,27 @@ pub fn spawn(app: AppHandle) {
                         if let Some(state) = app_logs.try_state::<SidecarState>() {
                             state.child.lock().unwrap().take();
                         }
+                        // [START] Auto-restart — schedule a full restart (kill ports + respawn)
+                        // after 3 s so the app recovers from OOM / Metal faults. Capped at
+                        // 3 consecutive attempts to prevent infinite crash loops when the
+                        // sidecar can't start at all (missing dependency, bad config, etc.).
+                        if let Some(st) = app_logs.try_state::<SidecarState>() {
+                            let count = st.auto_restart_count.fetch_add(1, Ordering::SeqCst);
+                            if count < 3 {
+                                let app_restart = app_logs.clone();
+                                tauri::async_runtime::spawn(async move {
+                                    log::info!(target: "sidecar", "auto-restart {}/3 scheduled in 3s", count + 1);
+                                    tokio::time::sleep(Duration::from_secs(3)).await;
+                                    restart(app_restart).await;
+                                });
+                            } else {
+                                log::error!(target: "sidecar", "auto-restart limit reached (3/3) — giving up");
+                                update_status(&app_logs, |s| {
+                                    s.message = Some("auto-restart failed after 3 attempts".into());
+                                });
+                            }
+                        }
+                        // [END]
                     }
                     break;
                 }
@@ -169,6 +274,91 @@ pub fn spawn(app: AppHandle) {
         health_loop(app_hc, ports, gen_hc).await;
     });
 }
+
+// [START] Phase R — bootstrap flow.
+// Spawns `uv sync` with UV_PROJECT_ENVIRONMENT pointed at the user cache.
+// Stream stderr to the frontend so the first-run UI can show progress.
+// On clean exit we recursively call spawn() which this time picks up the
+// newly-minted venv and enters Run mode.
+fn spawn_bootstrap(app: AppHandle, command: tauri_plugin_shell::process::Command) {
+    update_status(&app, |s| {
+        s.health = SidecarHealth::Bootstrapping;
+        s.pid = None;
+        s.healthy_apis.clear();
+        s.message = Some("installing AI runtime…".into());
+        s.bootstrap_progress = Some("starting uv sync".into());
+    });
+
+    let (mut rx, _child) = match command.spawn() {
+        Ok(r) => r,
+        Err(e) => {
+            update_status(&app, |s| {
+                s.health = SidecarHealth::Failed;
+                s.message = Some(format!("bootstrap spawn failed: {e}"));
+                s.bootstrap_progress = None;
+            });
+            return;
+        }
+    };
+
+    let app_logs = app.clone();
+    tauri::async_runtime::spawn(async move {
+        let mut last_err: Option<String> = None;
+        while let Some(event) = rx.recv().await {
+            match event {
+                CommandEvent::Stdout(line) => {
+                    let s = String::from_utf8_lossy(&line).trim_end().to_string();
+                    log::info!(target: "sidecar.boot", "{s}");
+                    let _ = app_logs.emit(BOOTSTRAP_LOG_EVENT, &s);
+                    if !s.is_empty() {
+                        update_status(&app_logs, |st| st.bootstrap_progress = Some(s.clone()));
+                    }
+                }
+                CommandEvent::Stderr(line) => {
+                    let s = String::from_utf8_lossy(&line).trim_end().to_string();
+                    log::info!(target: "sidecar.boot", "{s}");
+                    let _ = app_logs.emit(BOOTSTRAP_LOG_EVENT, &s);
+                    if !s.is_empty() {
+                        update_status(&app_logs, |st| st.bootstrap_progress = Some(s.clone()));
+                    }
+                    last_err = Some(s);
+                }
+                CommandEvent::Error(e) => {
+                    log::error!(target: "sidecar.boot", "{e}");
+                    last_err = Some(e.to_string());
+                }
+                CommandEvent::Terminated(payload) => {
+                    let ok = matches!(payload.code, Some(0));
+                    log::info!(target: "sidecar.boot", "uv sync terminated code={:?}", payload.code);
+                    if ok {
+                        update_status(&app_logs, |s| {
+                            s.bootstrap_progress = Some("runtime ready".into());
+                        });
+                        // Brief pause before transitioning — lets the UI see
+                        // the "ready" frame before the modal closes.
+                        tokio::time::sleep(Duration::from_millis(400)).await;
+                        spawn(app_logs.clone());
+                    } else {
+                        update_status(&app_logs, |s| {
+                            s.health = SidecarHealth::Failed;
+                            s.message = Some(format!(
+                                "runtime install failed (exit {:?}): {}",
+                                payload.code,
+                                last_err
+                                    .clone()
+                                    .unwrap_or_else(|| "see logs".into())
+                            ));
+                            s.bootstrap_progress = None;
+                        });
+                    }
+                    break;
+                }
+                _ => {}
+            }
+        }
+    });
+}
+// [END]
 
 pub fn kill(app: &AppHandle) {
     if let Some(state) = app.try_state::<SidecarState>() {
@@ -192,16 +382,40 @@ pub fn kill(app: &AppHandle) {
             s.pid = None;
             s.healthy_apis.clear();
             s.message = None;
+            s.bootstrap_progress = None;
         });
     }
 }
 
 pub async fn restart(app: AppHandle) {
     kill(&app);
+    // Reset auto-restart counter — manual restart is a fresh start.
+    if let Some(st) = app.try_state::<SidecarState>() {
+        st.auto_restart_count.store(0, Ordering::SeqCst);
+    }
     // 800ms gives the OS time to release the freed ports before rebinding.
     tokio::time::sleep(Duration::from_millis(800)).await;
     spawn(app);
 }
+
+// [START] Phase R — user-facing runtime reinstall.
+// Tears down the venv so the next spawn triggers a fresh bootstrap.
+pub async fn reinstall_runtime(app: AppHandle) -> Result<(), String> {
+    kill(&app);
+    if let Some(venv) = user_venv_path(&app) {
+        if venv.exists() {
+            std::fs::remove_dir_all(&venv)
+                .map_err(|e| format!("failed to remove venv at {}: {e}", venv.display()))?;
+        }
+    }
+    if let Some(st) = app.try_state::<SidecarState>() {
+        st.auto_restart_count.store(0, Ordering::SeqCst);
+    }
+    tokio::time::sleep(Duration::from_millis(400)).await;
+    spawn(app);
+    Ok(())
+}
+// [END]
 
 // [START] kill_port — macOS helper. Uses lsof + kill -9 shelled out via
 // std::process so we don't introduce a nix / libc dependency. Errors are
@@ -269,6 +483,11 @@ async fn health_loop(app: AppHandle, ports: SidecarPorts, generation: u64) {
     let startup_grace = Duration::from_secs(45);
     let mut last_healthy: Vec<String> = vec![];
     let mut last_health = SidecarHealth::Starting;
+    // [START] Track when health first became Healthy so the auto-restart
+    // counter only resets after 60s of continuous uptime — prevents a
+    // crash-restart-healthy-crash infinite loop.
+    let mut healthy_since: Option<Instant> = None;
+    // [END]
 
     loop {
         let Some(state) = app.try_state::<SidecarState>() else {
@@ -293,10 +512,29 @@ async fn health_loop(app: AppHandle, ports: SidecarPorts, generation: u64) {
         }
 
         let new_health = if healthy.len() == 3 {
+            // [START] Only reset auto-restart counter after 60s of continuous
+            // healthy uptime. Prevents crash-restart-healthy-crash loops where
+            // the sidecar briefly passes healthz then dies again.
+            if healthy_since.is_none() {
+                healthy_since = Some(Instant::now());
+            }
+            if let Some(since) = healthy_since {
+                if since.elapsed() > Duration::from_secs(60) {
+                    if let Some(st) = app.try_state::<SidecarState>() {
+                        let prev = st.auto_restart_count.swap(0, Ordering::SeqCst);
+                        if prev > 0 {
+                            log::info!("sidecar stable for 60s — auto-restart counter reset");
+                        }
+                    }
+                }
+            }
+            // [END]
             SidecarHealth::Healthy
         } else if started.elapsed() > startup_grace {
+            healthy_since = None; // lost health — reset stability timer
             SidecarHealth::Failed
         } else {
+            healthy_since = None;
             SidecarHealth::Starting
         };
 
@@ -324,25 +562,68 @@ async fn health_loop(app: AppHandle, ports: SidecarPorts, generation: u64) {
     }
 }
 
-fn resolve_command(app: &AppHandle) -> Option<tauri_plugin_shell::process::Command> {
+fn resolve_command(app: &AppHandle) -> Option<SpawnMode> {
     let shell = app.shell();
 
-    if let Ok(resource_dir) = app.path().resource_dir() {
-        let bin = resource_dir.join("sidecar").join("ovo-sidecar");
+    // 1. Installed runtime: user venv has the ovo-sidecar entry script.
+    if let Some(bin) = user_venv_sidecar_bin(app) {
         if bin.exists() {
-            log::info!("using bundled sidecar at {}", bin.display());
-            return Some(shell.command(bin.to_string_lossy().to_string()));
+            log::info!("using installed sidecar at {}", bin.display());
+            return Some(SpawnMode::Run(
+                shell.command(bin.to_string_lossy().to_string()),
+            ));
         }
     }
 
+    // 2. Bundled source present but runtime not yet installed → bootstrap.
+    if let (Some(uv), Some((venv, src))) = (bundled_uv_binary(app), resolve_venv_env(app)) {
+        // Quarantine scrub — bundled uv ships inside a (potentially
+        // quarantined) .app. Stripping com.apple.quarantine before the first
+        // spawn avoids Gatekeeper blocking the subprocess on unsigned builds.
+        let _ = std::process::Command::new("/usr/bin/xattr")
+            .args(["-d", "com.apple.quarantine"])
+            .arg(&uv)
+            .status();
+
+        log::info!(
+            "bootstrapping sidecar venv → {} (source: {}, uv: {})",
+            venv.display(),
+            src.display(),
+            uv.display()
+        );
+        let cmd = shell
+            .command(uv.to_string_lossy().to_string())
+            .args([
+                "sync",
+                "--project",
+                src.to_string_lossy().as_ref(),
+                "--no-dev",
+            ])
+            .env("UV_PROJECT_ENVIRONMENT", venv.to_string_lossy().as_ref())
+            // uv emits nicer progress when it can detect a TTY. We're reading
+            // a pipe; force color off to keep log lines clean.
+            .env("NO_COLOR", "1")
+            // Pin the cache inside the runtime dir so uninstall is a single
+            // directory removal and we never spill into the user's global
+            // uv cache.
+            .env(
+                "UV_CACHE_DIR",
+                user_runtime_dir(app)
+                    .map(|d| d.join("uv-cache").to_string_lossy().into_owned())
+                    .unwrap_or_default(),
+            );
+        return Some(SpawnMode::Bootstrap(cmd));
+    }
+
+    // 3. Dev fallback — running `npm run tauri dev` from the repo.
     if let Ok(cwd) = std::env::current_dir() {
         if let Some(script) = find_dev_script(&cwd) {
             log::info!("using dev sidecar via {}", script.display());
-            return Some(
+            return Some(SpawnMode::Run(
                 shell
                     .command("/usr/bin/env")
                     .args(["bash", script.to_string_lossy().as_ref()]),
-            );
+            ));
         }
     }
 

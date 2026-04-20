@@ -58,13 +58,32 @@ export const useMcpStore = create<McpStoreState>((set, get) => ({
   servers: [],
   status: {},
 
-  // [START] load — hydrate from localStorage
+  // [START] load — hydrate from localStorage + auto-start any servers that
+  // were running before the restart. Rust state is ephemeral across app
+  // restarts so a server the user left enabled is cold after quit; we
+  // re-start each one in the background so the user doesn't have to click
+  // "Start" on every app launch.
   load() {
     const configs = readConfigs();
     set({ servers: configs });
-    // Refresh runtime status from Rust (servers started in a previous session
-    // are not auto-restarted — Rust state is ephemeral across app restarts).
     void get().refreshStatus();
+    // Kick off auto-start in parallel after the status refresh so we don't
+    // restart a server that happens to be running from a stale process.
+    void (async () => {
+      try {
+        await get().refreshStatus();
+      } catch {
+        /* best-effort */
+      }
+      for (const cfg of configs) {
+        if (get().status[cfg.server_id]?.running) continue;
+        try {
+          await get().startServer(cfg.server_id);
+        } catch (e) {
+          console.warn(`[mcp] auto-start failed for ${cfg.server_id}:`, e);
+        }
+      }
+    })();
   },
   // [END]
 

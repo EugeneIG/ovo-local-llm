@@ -25,11 +25,18 @@ class SearchResult:
 class DownloadTask:
     task_id: str
     repo_id: str
-    status: Literal["pending", "downloading", "done", "error"] = "pending"
+    status: Literal["pending", "downloading", "done", "error", "cancelled"] = "pending"
     error: str | None = None
     snapshot_path: Path | None = None
     started_at: float = 0.0
     finished_at: float | None = None
+    # [START] Phase 7 — progress tracking + cancellation
+    total_bytes: int | None = None
+    downloaded_bytes: int | None = None
+    total_files: int | None = None
+    downloaded_files: int | None = None
+    cancel_requested: bool = False
+    # [END]
 
 
 class HfDownloader:
@@ -37,17 +44,27 @@ class HfDownloader:
         self.cache_dir = cache_dir
         self._tasks: dict[str, DownloadTask] = {}
 
-    async def search(self, query: str, limit: int = 25) -> list[SearchResult]:
+    async def search(
+        self,
+        query: str,
+        limit: int = 25,
+        # [START] Phase 7 — filter type lets the Image tab scope HF search to
+        # text-to-image checkpoints (SDXL / Flux / Kandinsky etc.) instead of
+        # the mlx tag used by chat models.
+        kind: Literal["mlx", "image"] = "mlx",
+        # [END]
+    ) -> list[SearchResult]:
         from huggingface_hub import HfApi
 
         api = HfApi()
+        hf_filter = "text-to-image" if kind == "image" else "mlx"
 
         def _call() -> list[SearchResult]:
             # [START] HF API compat — `direction` was removed; newer versions
             # default to descending on numeric sort fields (downloads, likes).
             models = api.list_models(
                 search=query or None,
-                filter="mlx",
+                filter=hf_filter,
                 limit=limit,
                 sort="downloads",
                 cardData=False,
@@ -79,26 +96,89 @@ class HfDownloader:
         asyncio.create_task(self._run(task))
         return task
 
+    def cancel(self, task_id: str) -> bool:
+        """Mark a running download as cancel-requested. The per-file loop in
+        `_run` picks this up between files and stops before kicking off the
+        next one. Already-completed bytes are left in the HF cache — the next
+        retry will skip them."""
+        task = self._tasks.get(task_id)
+        if task is None:
+            return False
+        if task.status in {"done", "error", "cancelled"}:
+            return False
+        task.cancel_requested = True
+        return True
+
     async def _run(self, task: DownloadTask) -> None:
-        from huggingface_hub import snapshot_download
+        # [START] Phase 7 — per-file download loop.
+        # Replaces the single `snapshot_download` call so we get progress +
+        # cancellation. Each sibling file is fetched via `hf_hub_download`;
+        # the task's cancel flag is checked between files.
+        from huggingface_hub import HfApi, hf_hub_download
 
         task.status = "downloading"
+        api = HfApi()
+
+        # Enumerate repo files + sum their sizes for the progress denominator.
         try:
-            path = await asyncio.to_thread(
-                snapshot_download,
-                task.repo_id,
-                cache_dir=str(self.cache_dir),
+            info = await asyncio.to_thread(
+                api.repo_info, task.repo_id, files_metadata=True
             )
-            task.snapshot_path = Path(path)
-            task.status = "done"
-            task.finished_at = time.time()
-            registry.record_download(task.repo_id)
-            logger.info("download finished: %s -> %s", task.repo_id, path)
-        except BaseException as e:
+        except Exception as e:
             task.status = "error"
-            task.error = str(e)
+            task.error = f"repo_info failed: {e}"
             task.finished_at = time.time()
-            logger.exception("download failed: %s", task.repo_id)
+            logger.exception("repo_info failed: %s", task.repo_id)
+            return
+
+        siblings = list(info.siblings or [])
+        total_bytes = sum(int(s.size or 0) for s in siblings)
+        task.total_bytes = total_bytes
+        task.total_files = len(siblings)
+        task.downloaded_bytes = 0
+        task.downloaded_files = 0
+
+        last_snapshot_path: Path | None = None
+
+        for sib in siblings:
+            if task.cancel_requested:
+                task.status = "cancelled"
+                task.finished_at = time.time()
+                logger.info("download cancelled: %s", task.repo_id)
+                return
+            try:
+                local = await asyncio.to_thread(
+                    hf_hub_download,
+                    repo_id=task.repo_id,
+                    filename=sib.rfilename,
+                    cache_dir=str(self.cache_dir),
+                )
+            except BaseException as e:
+                task.status = "error"
+                task.error = str(e)
+                task.finished_at = time.time()
+                logger.exception("file fetch failed: %s/%s", task.repo_id, sib.rfilename)
+                return
+            # Snapshot dir is the file's parent (cache layout:
+            # .../snapshots/<rev>/<filename>); stash once.
+            if last_snapshot_path is None:
+                last_snapshot_path = Path(local).parent
+            task.downloaded_bytes = (task.downloaded_bytes or 0) + int(sib.size or 0)
+            task.downloaded_files = (task.downloaded_files or 0) + 1
+
+        task.snapshot_path = last_snapshot_path
+        task.status = "done"
+        task.finished_at = time.time()
+        registry.record_download(task.repo_id)
+        # [START] Invalidate scan cache so the next /ovo/models call sees the new model.
+        from ovo_sidecar.hf_scanner import invalidate_scan_cache
+        invalidate_scan_cache()
+        # [END]
+        logger.info(
+            "download finished: %s -> %s (%d files, %d bytes)",
+            task.repo_id, last_snapshot_path, task.downloaded_files, task.downloaded_bytes,
+        )
+        # [END]
 
 
 downloader = HfDownloader(settings.hf_cache_dir)

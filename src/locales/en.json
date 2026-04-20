@@ -1,7 +1,7 @@
 {
   "app": {
     "name": "OVO",
-    "tagline": "Local MLX LLM runtime"
+    "tagline": "All the LLMs. On device."
   },
   "nav": {
     "chat": "Chat",
@@ -9,12 +9,186 @@
     "image": "Image",
     "wiki": "Wiki",
     "models": "Models",
+    "fit": "Fit",
     "settings": "Settings",
     "about": "About"
   },
+  "fit": {
+    "title": "Hardware Fit",
+    "subtitle": "Models that match your machine, at a glance"
+  },
   "code": {
     "title": "Code",
-    "coming_soon": "IDE mode — CLAUDE.md / AGENTS.md driven coding workspace lands here in Phase 6"
+    "coming_soon": "IDE mode — CLAUDE.md / AGENTS.md driven coding workspace lands here in Phase 6",
+    "open_folder": "Open Folder",
+    "no_project": "Open a folder to start coding",
+    "select_file": "Select a file to edit",
+    "file_explorer": "Explorer",
+    "unsaved_changes": "Unsaved changes",
+    "save": "Save",
+    "save_all": "Save All",
+    "new_file": "New File",
+    "new_folder": "New Folder",
+    "rename": "Rename",
+    "delete": "Delete",
+    "delete_confirm": "Delete {{name}}?",
+    "ctx": {
+      "open": "Open",
+      "refresh": "Refresh",
+      "theme": "Code theme",
+      "add_file_to_chat": "Add file to agent chat",
+      "add_folder_to_chat": "Add folder to agent chat",
+      "reveal_in_finder": "Reveal in Finder",
+      "copy_path": "Copy Path",
+      "copy_relative_path": "Copy Relative Path",
+      "open_terminal": "Open in Terminal",
+      "rename": "Rename",
+      "delete": "Delete",
+      "delete_confirm": "Really delete {{name}}?",
+      "add_selection_to_chat": "Add selection to agent chat",
+      "explain_selection": "Explain selection",
+      "review_selection": "Review selection",
+      "explain_prompt": "Explain the following code",
+      "review_prompt": "Review the following code — check for bugs, type safety, naming, and simplification; suggest fixes"
+    },
+    "recents": {
+      "title": "Code Sessions",
+      "new": "New Session",
+      "empty": "No code sessions yet",
+      "search_placeholder": "Search sessions",
+      "pinned": "PINNED",
+      "recent": "RECENT"
+    },
+    "terminal": {
+      "title": "Terminal",
+      "new": "New Terminal",
+      "kill": "Kill Terminal"
+    },
+    "git": {
+      "title": "Source Control",
+      "branch": "Branch",
+      "staged": "Staged Changes",
+      "unstaged": "Changes",
+      "commit_placeholder": "Commit message",
+      "commit": "Commit",
+      "commit_success": "Committed successfully",
+      "stage": "Stage",
+      "unstage": "Unstage",
+      "no_changes": "No changes",
+      "refresh": "Refresh"
+    },
+    "search": {
+      "title": "Search",
+      "placeholder": "Search in files...",
+      "match_case": "Match Case",
+      "results": "{{count}} results in {{files}} files",
+      "no_results": "No results found"
+    },
+    "agent": {
+      "title": "Agent",
+      "placeholder": "Ask the agent to edit code...",
+      "placeholder_queue": "Queue another message...",
+      "send": "Send",
+      "stop": "Stop",
+      "no_model": "Select a model first",
+      "select_model": "Select model...",
+      "clear": "Clear",
+      "attach": "Attach",
+      "slash": "Slash command",
+      "upload_from_computer": "Upload from computer",
+      "add_context": "Add context",
+      "web_search_prompt": "Search query:",
+      "slash_palette": {
+        "placeholder": "Search slash commands...",
+        "section_commands": "Slash commands",
+        "section_session": "Session",
+        "section_model": "Model",
+        "section_customize": "Customize",
+        "section_snippets": "Snippets",
+        "switch_model": "Switch model...",
+        "cycle_tool_mode": "Tool mode → {{next}}",
+        "open_tabs_hint": "{{count}} open tab(s)",
+        "hint_clear": "Clear conversation",
+        "hint_mode": "Switch to {{mode}} mode",
+        "current": "current",
+        "none": "none"
+      },
+      "browse_web": "Browse the web",
+      "coming_soon": "Coming soon",
+      "file_attached": "📎 {{name}} attached",
+      "queued": "{{count}} queued",
+      "selection": "{{lines}} lines selected",
+      "no_selection": "No selection",
+      "empty": "What should we build?",
+      "todos": {
+        "title": "Plan",
+        "pending": "Pending",
+        "in_progress": "In progress",
+        "completed": "Done"
+      },
+      "mode": {
+        "bypass": "Auto-run",
+        "ask": "Ask each tool",
+        "plan": "Plan only"
+      },
+      "approval": {
+        "title": "Approve agent action",
+        "subtitle": "Run {{tool}}?",
+        "approve": "Approve",
+        "reject": "Reject",
+        "args": "Arguments"
+      }
+    },
+    "quick_open": {
+      "placeholder": "Go to file… (type to filter)",
+      "count": "{{n}} results",
+      "no_results": "No matches",
+      "empty_tree": "Start typing to search files"
+    },
+    "settings": {
+      "title": "Editor Settings",
+      "tab_editor": "Editor",
+      "tab_ai": "AI Completion",
+      "font_size": "Font size",
+      "tab_size": "Tab size",
+      "word_wrap": "Word wrap",
+      "wrap_off": "Off",
+      "wrap_on": "On",
+      "minimap": "Minimap",
+      "line_numbers": "Line numbers",
+      "auto_save": "Auto save",
+      "auto_save_off": "Off",
+      "auto_save_after_delay": "After delay",
+      "auto_save_focus": "On focus change",
+      "auto_save_delay": "Delay",
+      "completion_enabled": "Enable inline completion",
+      "completion_delay": "Completion delay",
+      "completion_hint": "FIM ghost text uses the currently selected code session model. Requires a Coder-class MLX model (Qwen2.5-Coder / DeepSeek-Coder / StarCoder / CodeLlama).",
+      "tab_general": "General",
+      "browser_preference": "Auto-open browser",
+      "browser_default": "System default",
+      "browser_custom": "Custom app",
+      "browser_custom_app": "App name",
+      "browser_hint": "When the agent's `run_command` prints a localhost URL (dev server), OVO auto-opens it in this browser.",
+      "reset": "Reset defaults",
+      "done": "Done"
+    },
+    "md_preview": {
+      "show": "Show Markdown preview",
+      "hide": "Hide Markdown preview"
+    },
+    "inline_chat": {
+      "title": "Inline Chat",
+      "close": "Close",
+      "placeholder": "How should this code change? (Enter to submit)",
+      "no_model": "Select a model in the agent chat first",
+      "hint": "Enter submit · Esc cancel · Cmd+Z to undo",
+      "generating": "Generating…",
+      "generating_btn": "Generating",
+      "submit": "Apply",
+      "empty_response": "Empty response",
+      "selection_chars": "{{n}} chars selected"
+    }
   },
   "image": {
     "title": "Image generation",
@@ -25,6 +199,69 @@
       "unload": "Loading an image model unloads the active chat/code LLM to free unified memory",
       "download": "Pull Draw Things-level catalog coverage (SD 1.5 / SDXL / Flux / ControlNet / LoRA) from HF via the Models tab",
       "settings": "Settings: model · LoRA · control · strength · seed · size · steps · CFG · sampler · shift · batch · prompt/negative"
+    },
+    "header": {
+      "browse_models": "Browse HF Models",
+      "catalog": "Catalog",
+      "catalog_hint": "Curated official + community picks — one-click install",
+      "catalog_official": "Official models",
+      "catalog_community": "Community fine-tunes",
+      "search_placeholder": "Search image-gen models (e.g. sdxl, flux, kandinsky)",
+      "search_btn": "Search",
+      "search_tip": "Only HF models tagged 'text-to-image' are shown"
+    },
+    "prompt": {
+      "label": "Prompt",
+      "placeholder": "Describe the image you want…",
+      "generate": "Generate",
+      "stop": "Stop",
+      "loading_model": "Loading model: {{model}}"
+    },
+    "gallery": {
+      "title": "Gallery",
+      "empty": "No images generated yet",
+      "clear": "Clear session"
+    },
+    "ctx": {
+      "expand": "Expand",
+      "copy_path": "Copy file path",
+      "open_new_window": "Open in new window",
+      "upscale": "Upscale 4×",
+      "upscale_started": "Upscale started (model load may take a few minutes)",
+      "upscale_done": "Upscale done · {{w}}×{{h}}",
+      "delete": "Delete",
+      "path_copied": "Path copied to clipboard"
+    },
+    "errors": {
+      "no_model": "Pick an image-generation model first",
+      "empty_prompt": "Enter a prompt first"
+    },
+    "settings": {
+      "title": "Settings",
+      "style_preset": "Style preset",
+      "style_preset_hint": "Official SDXL styles — wraps your prompt in a template that biases the model toward a specific aesthetic.",
+      "negative_prompt": "Negative prompt",
+      "negative_placeholder": "What to avoid (e.g. blurry, low quality)",
+      "sampler": "Sampler",
+      "size": "Image size",
+      "size_preset_placeholder": "Pick a preset…",
+      "steps": "Inference steps",
+      "cfg_scale": "CFG scale",
+      "seed": "Seed",
+      "seed_random": "random",
+      "seed_clear": "Random",
+      "seed_random_btn": "Randomize seed",
+      "batch": "Batch size",
+      "shift": "Shift (Flux only)",
+      "shift_off": "Off (use model default)",
+      "loras": "LoRAs",
+      "lora_add": "+ Add",
+      "lora_empty": "No LoRAs applied",
+      "lora_path_placeholder": "LoRA safetensors absolute path",
+      "control_model": "ControlNet model (optional)",
+      "control_model_placeholder": "e.g. diffusers/controlnet-canny-sdxl-1.0",
+      "control_strength": "Control strength",
+      "control_hint": "Only applied when a control image is set"
     }
   },
   "wiki": {
@@ -40,6 +277,9 @@
     "auto_saved": "Auto-saved · {{slug}}",
     "pin": "Pin to top",
     "unpin": "Unpin",
+    "archive": "Archive",
+    "unarchive": "Unarchive",
+    "show_archived": "Show archived",
     "delete": "Delete page",
     "delete_confirm": "Really delete \"{{title}}\"?",
     "tier": {
@@ -50,11 +290,34 @@
       "note_hint": "📝 Raw jotting · unvetted capture",
       "casebook_hint": "📚 Distilled patterns · promoted from multiple notes",
       "canonical_hint": "🏛 Canonical project knowledge · top retrieval weight"
+    },
+    "lint": {
+      "button": "Run Lint",
+      "title": "Wiki Lint",
+      "rerun": "Re-run",
+      "filter_all": "All",
+      "cat_orphan": "Orphan",
+      "cat_stale": "Stale",
+      "cat_oversized": "Oversized",
+      "cat_duplicate": "Duplicate title",
+      "empty_clean": "✨ Catalog is clean — no issues found",
+      "empty_filter": "No issues in this category",
+      "error": "Lint failed: {{error}}"
+    },
+    "backlinks": {
+      "heading": "{{count}} backlinks"
+    },
+    "tags": {
+      "empty_hint": "No tags yet — add #snippet to expose this page as a slash template",
+      "add_placeholder": "+ Add tag (Enter)",
+      "remove": "Remove {{tag}}",
+      "snippet_hint": "This page is exposed as a slash template"
     }
   },
   "sidecar": {
     "status": {
       "stopped": "Stopped",
+      "bootstrapping": "Installing runtime",
       "starting": "Starting",
       "healthy": "Healthy",
       "failed": "Failed"
@@ -62,10 +325,45 @@
     "restart": "Restart sidecar",
     "restarting": "Restarting…",
     "start": "Start sidecar",
+    "installing": "Installing…",
+    "bootstrap": {
+      "title": "Setting up the AI runtime",
+      "body": "First launch — installing the Python environment and model runtime. Takes 1–5 minutes and needs network.",
+      "preparing": "Preparing…",
+      "failed_title": "Runtime install failed",
+      "failed_body": "Likely a network or disk permissions issue. Retry, or start the install fresh.",
+      "retry": "Retry",
+      "reinstall": "Fresh install"
+    },
+    "runtime": {
+      "label": "AI runtime",
+      "description": "Python environment plus MLX / Transformers dependencies",
+      "reinstall": "Reinstall runtime",
+      "reinstall_hint": "Wipes the venv and re-downloads. Use only when something's broken.",
+      "reinstall_confirm": "Reinstall the AI runtime? Chat will be offline for 1–5 minutes while it re-downloads.",
+      "reinstalling": "Reinstalling…"
+    },
     "banner": {
       "stopped": "Sidecar is off. Click the 💾 button on the bottom-left to start it",
       "failed": "Sidecar failed to start. Try again with the 💾 button",
       "starting": "Starting the sidecar…"
+    },
+    "offline": {
+      "stopped_title": "Sidecar is offline",
+      "stopped_body": "Local models need the sidecar running. Hit start to wake it up.",
+      "starting_title": "Sidecar starting",
+      "starting_body": "The three FastAPI ports are coming up — hang tight.",
+      "failed_title": "Sidecar failed to start",
+      "failed_body": "Check the log and retry. Persistent failures are usually a port conflict or Python venv issue.",
+      "healthy_title": "Sidecar running",
+      "healthy_body": "All servers are responsive.",
+      "start_btn": "Start sidecar",
+      "retry_btn": "Retry"
+    },
+    "modal": {
+      "loading": "Loading sidecar…",
+      "success": "Sidecar ready",
+      "failed": "Sidecar failed to load"
     },
     "ports": {
       "ollama": "Ollama",
@@ -95,6 +393,7 @@
     "remove_attachment": "Remove attachment",
     "attach_unsupported": "This model is text-only",
     "queue_badge": "{{count}} queued",
+    "system_status": "Runtime status",
     "tool_use": {
       "call_label": "🔧 Tool call: {{name}}",
       "result_label": "🔧 Tool result",
@@ -120,20 +419,132 @@
       "accept_hint": "Images and audio files supported",
       "reject": "This model doesn't support attachments",
       "reject_hint": "Switch to a vision or audio-capable model"
+    },
+    "fork": {
+      "button": "Fork from here",
+      "created": "↳ Branched: {{title}}",
+      "failed": "Fork failed: {{error}}"
+    },
+    "recommend": {
+      "label": "🎯 Try {{name}}?",
+      "apply": "Switch",
+      "dismiss": "Dismiss"
+    },
+    "voice": {
+      "start": "Click to record",
+      "recording": "Recording… click to stop",
+      "processing": "Transcribing…",
+      "error": "Voice error: {{error}}"
     }
   },
   "models": {
     "title": "Installed models",
     "count": "{{count}} models",
-    "empty": "No MLX models found. Pull one via HF cache or LM Studio",
+    "empty": "No installed models. Use search or catalog above.",
     "mlx_only": "MLX models only",
+    "tab_general": "General",
+    "tab_image": "Image",
+    "fit": {
+      "title": "Hardware Fit",
+      "cores": "{{count}} cores",
+      "unified_gpu": "unified GPU",
+      "free": "free",
+      "sidecar_offline": "Sidecar offline — Fit scoring unavailable",
+      "scanning": "Scanning…",
+      "empty": "No models installed yet — search below to add one.",
+      "size_unknown": "size?",
+      "tier": {
+        "perfect": "Runs great",
+        "good": "Fits",
+        "tight": "Tight fit",
+        "unfit": "Won't fit",
+        "unknown": "Unknown"
+      },
+      "reason": {
+        "perfect": "Uses ~{{pct}}% of usable RAM — loads fast, leaves room for long context",
+        "good": "Uses ~{{pct}}% of usable RAM — fits comfortably",
+        "tight": "Uses ~{{pct}}% of usable RAM — tight fit, short context only",
+        "unfit": "Needs ~{{pct}}% of usable RAM — won't load on this machine",
+        "unknown_size": "Could not estimate model size",
+        "no_system_info": "System info unavailable"
+      },
+      "recommended_title": "Recommended for you",
+      "recommended_hint": "Models that fit this hardware",
+      "tab": {
+        "curated": "Curated",
+        "explore": "Explore"
+      },
+      "explore_hint": "Live search of mlx-community trending models",
+      "filter": {
+        "all_kinds": "All",
+        "fits_only": "Fits only",
+        "hide_installed": "Hide installed"
+      },
+      "explore_loading": "Fetching from HuggingFace…",
+      "explore_empty": "No results",
+      "downloads": "{{count}} downloads",
+      "axis": {
+        "quality": "Quality",
+        "speed": "Speed",
+        "context": "Context",
+        "fit": "Fit",
+        "overall": "Overall"
+      },
+      "install": "Install",
+      "installed": "Installed",
+      "installing": "Installing…",
+      "kind": {
+        "chat": "Chat",
+        "code": "Code",
+        "vlm": "Vision",
+        "reasoning": "Reasoning"
+      },
+      "col": {
+        "score": "Score",
+        "tps": "t/s",
+        "quant": "Quant",
+        "mode": "Mode",
+        "mem": "Mem",
+        "ctx": "Ctx",
+        "use_case": "Use"
+      },
+      "use_case": {
+        "coding": "Coding",
+        "reasoning": "Reasoning",
+        "chat": "Chat",
+        "vlm": "Vision",
+        "general": "General"
+      },
+      "tooltip": {
+        "params": "Model parameter count"
+      },
+      "tier_badge": {
+        "supported": "Supported",
+        "experimental": "Experimental",
+        "unknown": "Unverified",
+        "reason": {
+          "supported_qwen": "Qwen 3 / Qwen2.5-Coder family — reliable tool use",
+          "supported_llama": "Llama 3.1+ family — reliable tool use",
+          "supported_deepseek": "DeepSeek Coder / R1 family — reliable tool use",
+          "supported_mistral": "Mistral / MiniMax / Mixtral family — reliable tool use",
+          "experimental_small": "Small model (Gemma/Phi) — flaky tool calls, hallucinates",
+          "experimental_size": "Under 4B — structured output often fails",
+          "unknown": "Not yet verified on OVO — confirm tool calls in practice"
+        }
+      }
+    },
+    "swap": {
+      "unmounting": "🔄 Unloading {{name}}…",
+      "mounted": "✅ Mounted {{name}}"
+    },
     "source": {
       "hf": "HuggingFace",
       "lmstudio": "LM Studio"
     },
     "capability": {
       "vision": "Vision",
-      "audio": "Audio"
+      "audio": "Audio",
+      "image_gen": "Image-gen"
     },
     "perf": {
       "tokens_per_sec": "{{count}} t/s",
@@ -160,7 +571,14 @@
       "download_error": "Download failed: {{error}}",
       "download_started": "Started downloading {{repo}}",
       "download_done": "{{repo}} installed",
-      "empty_results": "No results"
+      "empty_results": "No results",
+      "cancel_btn": "Cancel download",
+      "cancel_sent": "Cancellation requested",
+      "cancelling": "Cancelling…",
+      "delete_btn": "Remove local model",
+      "confirm_delete": "Permanently delete {{repo}} from disk?",
+      "delete_progress": "Removing {{repo}}… (large models may take seconds)",
+      "delete_done": "{{repo}} removed"
     }
   },
   "settings": {
@@ -221,6 +639,75 @@
       "guide_continue": "Continue.dev (VS Code): config.json → models[].apiBase = http://localhost:11436/v1",
       "guide_zed": "Zed: settings.json → language_models.openai.api_url = http://localhost:11436/v1",
       "guide_generic": "Any OpenAI SDK: OpenAI(base_url='http://localhost:11436/v1', api_key='none')"
+    },
+    "skills": {
+      "section_title": "Skills Catalog",
+      "description": "Auto-loads .ovo/skills/*.md from your project and injects them into the system prompt. Parity with Claude's .claude/skills/.",
+      "no_folder": "No project folder set",
+      "empty": "No skills found in .ovo/skills/. Add some .md files and rescan.",
+      "rescan": "Rescan",
+      "pick_override": "Pick custom folder",
+      "clear_override": "Reset to default",
+      "active_count": "{{active}} active / {{total}} total",
+      "error": "Scan failed: {{error}}"
+    },
+    "feature_flags": {
+      "section_title": "Feature Flags",
+      "description": "Turn OVO's automatic behaviors on or off. Everything defaults to on; flip a toggle to keep the system prompt lean or stop side-effects.",
+      "reset": "Restore all on",
+      "off_badge": "off",
+      "enable_skills_label": "Auto-load skills",
+      "enable_skills_help": "Scan .ovo/skills/*.md and keep them in memory. Off means no scan at all.",
+      "enable_personas_label": "Apply persona",
+      "enable_personas_help": "Use the selected persona's system prompt and sampling overrides on every send. Off keeps the selector visible but inert.",
+      "enable_skills_injection_label": "Inject skills",
+      "enable_skills_injection_help": "Concatenate enabled skills into the system prompt as <ovo_skills>. Independent from the load toggle.",
+      "enable_wiki_retrieval_label": "Wiki auto-retrieval",
+      "enable_wiki_retrieval_help": "Each chat turn runs hybrid search and injects matching Wiki pages. Off means the model never sees the Wiki via prompt.",
+      "enable_memory_tools_label": "Expose memory_* tools",
+      "enable_memory_tools_help": "Advertise memory_search/add/list/delete/archive as callable. Off prevents the model from editing the Wiki.",
+      "enable_wiki_auto_capture_label": "Auto-capture at session end",
+      "enable_wiki_auto_capture_help": "(coming soon) On session end / compact, save meaningful findings to the Wiki under category 'session-log'.",
+      "enable_semantic_compact_label": "Semantic compact",
+      "enable_semantic_compact_help": "Use embeddings to compact off-topic / redundant messages first instead of pure age. Falls back to time-based when the sidecar is offline.",
+      "enable_model_recommendation_label": "Auto model recommendation",
+      "enable_model_recommendation_help": "Suggests a better-fit model in a chip above the chat input based on the draft prompt and attachments. One click to switch.",
+      "enable_voice_input_label": "Voice input (mic → text)",
+      "enable_voice_input_help": "Adds a mic button to the chat input. Hold to record, release to transcribe via mlx-whisper (requires sidecar).",
+      "enable_tts_response_label": "Read responses aloud (TTS)",
+      "enable_tts_response_help": "Reads each assistant response aloud via macOS `say` after streaming finishes. Fires only for new turns, not history."
+    },
+    "personas": {
+      "section_title": "Personas",
+      "description": "Each .ovo/personas/*.md file is a persona. The five built-in templates are auto-seeded on first launch; edits here write straight back to disk.",
+      "no_folder": "No project folder set",
+      "empty": "No personas yet. Hit + New persona to create one.",
+      "rescan": "Rescan",
+      "create": "+ New persona",
+      "create_prompt": "Name for the new persona",
+      "builtin_badge": "built-in",
+      "field_emoji": "Emoji",
+      "field_name": "Name",
+      "field_honorific": "User honorific",
+      "field_persona": "Persona (system prompt body)",
+      "honorific_placeholder": "e.g. boss",
+      "persona_placeholder": "Describe this persona's voice, role, and rules",
+      "sampling_title": "Sampling overrides (optional)",
+      "extra_title": "Extra system instruction (optional)",
+      "extra_placeholder": "One-liner appended after the persona body",
+      "use_override": "override",
+      "max_tokens_inherit": "Inherit default",
+      "max_tokens_limit": "Cap tokens",
+      "save": "Save",
+      "saved": "Saved {{name}}",
+      "reset": "Reset to default",
+      "confirm_reset": "Reset {{name}} to the built-in template?",
+      "reset_done": "Restored {{name}} to defaults",
+      "delete": "Delete",
+      "confirm_delete": "Delete persona {{name}}?",
+      "copy_path": "Copy path",
+      "path_copied": "Path copied to clipboard",
+      "error": "Scan failed: {{error}}"
     },
     "project_context": {
       "section_title": "Project Context",
@@ -308,7 +795,8 @@
     "pin": "Pin",
     "unpin": "Unpin",
     "delete": "Delete",
-    "confirm_delete": "Confirm delete?"
+    "confirm_delete": "Confirm delete?",
+    "branched": "Forked from another session"
   },
   "context": {
     "project_badge": "📄 {{count}} files",

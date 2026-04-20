@@ -149,11 +149,18 @@ export interface HfSearchResult {
 export interface DownloadTask {
   task_id: string;
   repo_id: string;
-  status: "pending" | "downloading" | "done" | "error";
+  status: "pending" | "downloading" | "done" | "error" | "cancelled";
   error: string | null;
   snapshot_path: string | null;
   started_at: number;
   finished_at: number | null;
+  // [START] Phase 7 — optional progress + cancel fields
+  total_bytes?: number | null;
+  downloaded_bytes?: number | null;
+  total_files?: number | null;
+  downloaded_files?: number | null;
+  cancel_requested?: boolean;
+  // [END]
 }
 
 export async function searchModels(
@@ -194,6 +201,39 @@ export async function listDownloads(
   const data = await jsonOrThrow<{ tasks: DownloadTask[] }>(resp);
   return data.tasks;
 }
+
+// [START] Phase 7 — cancel a running download task
+export async function cancelDownload(
+  task_id: string,
+  ports: SidecarPorts = DEFAULT_PORTS,
+): Promise<void> {
+  const resp = await fetch(`${nativeBase(ports)}/ovo/download/${task_id}`, {
+    method: "DELETE",
+  });
+  if (!resp.ok && resp.status !== 404) {
+    const text = await resp.text().catch(() => "");
+    throw new Error(`cancel failed: ${resp.status} ${text}`);
+  }
+}
+
+// [START] Phase 7 — force-delete a model (HF cache + optional LM Studio).
+// Note: we intentionally do NOT encodeURIComponent the slash in repo_id —
+// FastAPI's `{repo_id:path}` parameter matches the raw `/` literal; sending
+// `%2F` breaks the route match. Other reserved chars aren't expected in HF
+// repo_ids so skipping encoding is safe here.
+export async function deleteModel(
+  repo_id: string,
+  force = true,
+  ports: SidecarPorts = DEFAULT_PORTS,
+): Promise<void> {
+  const url = `${nativeBase(ports)}/ovo/models/${repo_id}?force=${force}`;
+  const resp = await fetch(url, { method: "DELETE" });
+  if (!resp.ok) {
+    const text = await resp.text().catch(() => "");
+    throw new Error(`delete failed: ${resp.status} ${text}`);
+  }
+}
+// [END]
 // [END]
 
 // [START] /ovo/count_tokens + /ovo/summarize — native sidecar endpoints used
@@ -238,6 +278,41 @@ export async function summarize(
 }
 // [END]
 
+// [START] Phase 8.4 — grammar-constrained tool-call regeneration.
+// When the code agent's text-based tool_use parsing fails (malformed JSON
+// the model can't recover from, wrong tag dialect, etc.) we call this
+// endpoint as a last-resort. The sidecar loads the same model behind an
+// Outlines logits processor and returns a tool call JSON that is
+// guaranteed to parse and match one of the declared tool signatures —
+// the decoder physically cannot emit an invalid token.
+export interface ConstrainedToolSchema {
+  name: string;
+  description?: string;
+  parameters?: Record<string, unknown>;
+  input_schema?: Record<string, unknown>;
+}
+
+export interface ConstrainedToolCallResponse {
+  tool_call: { name: string; arguments: Record<string, unknown> };
+  raw: string;
+}
+
+export async function generateConstrainedToolCall(
+  model: string,
+  messages: CountTokensMessage[],
+  tools: ConstrainedToolSchema[],
+  opts: { max_tokens?: number } = {},
+  ports: SidecarPorts = DEFAULT_PORTS,
+): Promise<ConstrainedToolCallResponse> {
+  const resp = await fetch(`${nativeBase(ports)}/ovo/tool_call`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ model, messages, tools, ...opts }),
+  });
+  return jsonOrThrow<ConstrainedToolCallResponse>(resp);
+}
+// [END]
+
 // [START] unloadLoadedModels — asks the sidecar to drop every currently-held
 // MLX runner (text + vlm pools). Used when the user switches session models
 // so unified memory isn't wedged by the previous model. Fire-and-forget from
@@ -275,5 +350,244 @@ export async function webSearch(
     body: JSON.stringify({ query, limit }),
   });
   return jsonOrThrow<WebSearchResult>(resp);
+}
+// [END]
+
+// [START] Phase 7 — image generation client.
+// SSE consumer for /ovo/images/generate plus the non-streaming fallback.
+// Gallery listing fetches the user's previously-saved renders so the UI
+// can rebuild a grid on mount.
+export interface LoraEntry {
+  path: string;
+  strength: number;
+}
+
+export interface ImagesGenerateRequest {
+  prompt: string;
+  model: string;
+  negative_prompt?: string;
+  width?: number;
+  height?: number;
+  steps?: number;
+  cfg_scale?: number;
+  sampler?: string;
+  seed?: number | null;
+  batch?: number;
+  shift?: number | null;
+  loras?: LoraEntry[];
+  control_image_b64?: string | null;
+  control_model?: string | null;
+  control_strength?: number;
+}
+
+export interface GeneratedImage {
+  index: number;
+  path: string;
+  base64_png: string;
+  seed: number;
+  width: number;
+  height: number;
+}
+
+export interface ImagesLoadingEvent {
+  type: "loading";
+  model: string;
+}
+
+export interface ImagesProgressEvent {
+  type: "progress";
+  step: number;
+  total: number;
+  elapsed_ms: number;
+}
+
+export interface ImagesImageEvent extends GeneratedImage {
+  type: "image";
+}
+
+export interface ImagesDoneEvent {
+  type: "done";
+  model: string;
+  sampler: string;
+  total_elapsed_ms: number;
+}
+
+export interface ImagesErrorEvent {
+  type: "error";
+  message: string;
+}
+
+export type ImagesEvent =
+  | ImagesLoadingEvent
+  | ImagesProgressEvent
+  | ImagesImageEvent
+  | ImagesDoneEvent
+  | ImagesErrorEvent;
+
+export async function* streamImageGeneration(
+  req: ImagesGenerateRequest,
+  signal?: AbortSignal,
+  ports: SidecarPorts = DEFAULT_PORTS,
+): AsyncGenerator<ImagesEvent, void, void> {
+  const resp = await fetch(`${nativeBase(ports)}/ovo/images/generate`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(req),
+    signal,
+  });
+  if (!resp.ok || !resp.body) {
+    const text = await resp.text().catch(() => "");
+    throw new Error(`image stream failed: ${resp.status} ${text}`);
+  }
+  const reader = resp.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const frames = buffer.split("\n\n");
+    buffer = frames.pop() ?? "";
+    for (const frame of frames) {
+      const line = frame.trim();
+      if (!line.startsWith("data:")) continue;
+      const payload = line.slice(5).trim();
+      if (!payload) continue;
+      try {
+        const parsed = JSON.parse(payload) as ImagesEvent;
+        yield parsed;
+        if (parsed.type === "done" || parsed.type === "error") return;
+      } catch {
+        // Ignore malformed frames — next one will likely parse.
+      }
+    }
+  }
+}
+
+export interface ImagesGallery {
+  images: Array<{ path: string; name: string; size_bytes: number; modified_at: number }>;
+}
+
+export async function listImagesGallery(
+  limit = 100,
+  ports: SidecarPorts = DEFAULT_PORTS,
+): Promise<ImagesGallery> {
+  const resp = await fetch(`${nativeBase(ports)}/ovo/images/gallery?limit=${limit}`);
+  return jsonOrThrow<ImagesGallery>(resp);
+}
+
+// [START] Phase 7 — raw image URL + delete helpers.
+// Serving through the sidecar sidesteps Tauri's assetProtocol scope entirely.
+export function imageRawUrl(
+  absolutePath: string,
+  ports: SidecarPorts = DEFAULT_PORTS,
+): string {
+  return `${nativeBase(ports)}/ovo/images/raw?path=${encodeURIComponent(absolutePath)}`;
+}
+
+export async function deleteImage(
+  absolutePath: string,
+  ports: SidecarPorts = DEFAULT_PORTS,
+): Promise<void> {
+  const resp = await fetch(
+    `${nativeBase(ports)}/ovo/images/raw?path=${encodeURIComponent(absolutePath)}`,
+    { method: "DELETE" },
+  );
+  if (!resp.ok) {
+    const text = await resp.text().catch(() => "");
+    throw new Error(`delete failed: ${resp.status} ${text}`);
+  }
+}
+
+// [START] Phase 7 — Upscale client (x4 via StableDiffusionUpscalePipeline).
+export interface UpscaleRequest {
+  source_path: string;
+  prompt?: string;
+  steps?: number;
+  guidance_scale?: number;
+  model?: string;
+  seed?: number | null;
+}
+
+export interface UpscaleResult {
+  path: string;
+  base64_png: string;
+  width: number;
+  height: number;
+  elapsed_ms: number;
+}
+
+export async function upscaleImage(
+  req: UpscaleRequest,
+  ports: SidecarPorts = DEFAULT_PORTS,
+): Promise<UpscaleResult> {
+  const resp = await fetch(`${nativeBase(ports)}/ovo/images/upscale`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(req),
+  });
+  return jsonOrThrow<UpscaleResult>(resp);
+}
+// [END]
+// [END]
+
+export async function searchImageModels(
+  q: string,
+  limit = 25,
+  ports: SidecarPorts = DEFAULT_PORTS,
+): Promise<HfSearchResult[]> {
+  const url = `${nativeBase(ports)}/ovo/models/search?q=${encodeURIComponent(q)}&limit=${limit}&kind=image`;
+  const resp = await fetch(url);
+  const data = await jsonOrThrow<{ query: string; results: HfSearchResult[] }>(resp);
+  return data.results;
+}
+// [END] Phase 7
+
+// [START] Phase 8 — /ovo/system/info for llmfit.
+// Snapshot of the host hardware (RAM / CPU / GPU / disk) used to score
+// whether a given model can run comfortably on this machine. Fields follow
+// the sidecar shape 1:1 so additions on either side stay synchronised.
+export interface SystemInfo {
+  platform: string;
+  arch: string;
+  os_release: string;
+  cpu: {
+    brand: string;
+    logical_cores: number;
+    physical_cores: number;
+  };
+  memory: {
+    total_bytes: number;
+    available_bytes: number;
+    used_bytes: number;
+    percent: number;
+  };
+  disk: {
+    path: string;
+    free_bytes: number;
+    total_bytes: number;
+  };
+  gpu: {
+    unified: boolean;
+    kind: string;
+    // [START] Phase 8 — authoritative MLX budget.
+    // Bytes MLX will actually allocate without forcing macOS into swap.
+    // Populated by configure_memory_limits() at sidecar startup; 0 means
+    // the sidecar hasn't planted a limit yet (non-MLX host or legacy
+    // build). Use `mlx_memory_limit_bytes` as the preferred "usable"
+    // ceiling in fit scoring — it's more accurate than `memory.total`
+    // minus a rule-of-thumb overhead.
+    mlx_memory_limit_bytes?: number;
+    mlx_cache_limit_bytes?: number;
+    gpu_wired_limit_bytes?: number;
+    // [END]
+  };
+}
+
+export async function getSystemInfo(
+  ports: SidecarPorts = DEFAULT_PORTS,
+): Promise<SystemInfo> {
+  const resp = await fetch(`${nativeBase(ports)}/ovo/system/info`);
+  return jsonOrThrow<SystemInfo>(resp);
 }
 // [END]

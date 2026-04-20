@@ -11,7 +11,12 @@ export interface QuantizationConfig {
   mode?: string;
 }
 
-export type ModelCapability = "text" | "vision" | "audio";
+// [START] Phase 7 — `image_gen` capability surfaces text-to-image diffusion
+// pipelines. Detected server-side via model_index.json::_class_name; the UI
+// filters these OUT of chat/code selectors and filters them IN in the Image
+// tab's model picker.
+export type ModelCapability = "text" | "vision" | "audio" | "image_gen";
+// [END]
 
 export interface OvoModel {
   repo_id: string;
@@ -78,6 +83,11 @@ export interface Session {
   pinned: boolean;
   context_tokens: number;
   compacting: boolean;
+  // [START] Phase 8 — fork lineage. NULL for root sessions; otherwise points
+  // at the session/message we forked from (one-shot, no further mutation).
+  parent_session_id: string | null;
+  parent_message_id: string | null;
+  // [END]
   created_at: number;
   updated_at: number;
 }

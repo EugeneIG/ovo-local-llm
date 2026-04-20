@@ -5,6 +5,8 @@ import { useToastsStore } from "../store/toasts";
 import { useSidecarStore } from "../store/sidecar";
 import { useChatSettingsStore } from "../store/chat_settings";
 import { useModelOverridesStore } from "../store/model_overrides";
+import { useFeatureFlagsStore } from "../store/feature_flags";
+import { embedTexts, cosineSimilarity } from "./embeddings";
 import type { Message, CompactStrategy, OvoModel } from "../types/ovo";
 
 // [START] shouldCompact — pure predicate. Returns true only when strategy is
@@ -32,6 +34,97 @@ export function pickCompactionSlice(messages: Message[]): Message[] {
   if (eligible.length < 2) return [];
   const sliceEnd = Math.floor(eligible.length / 2);
   return eligible.slice(0, sliceEnd);
+}
+// [END]
+
+// [START] Phase 8 — Semantic compaction slice.
+// Replaces the naive oldest-50 % selector with an embedding-aware one:
+//   - relevance = cosine(message, anchor) where anchor = last user message text
+//   - redundancy = max cosine(message, other-message) inside the conversation
+//   - compactScore = (1 − relevance) + redundancy × 0.3
+//     → high score = low relevance to current topic AND/OR redundant
+// Picks highest-score messages until ~50 % of total chars compacted, then
+// returns them in chronological order (so the resulting summary keeps a
+// readable narrative).
+//
+// Always preserves the most recent two messages — the model still needs an
+// immediate handle on the latest turn even if their score happens to qualify.
+//
+// Falls back to `pickCompactionSlice` when:
+//   • fewer than 4 eligible messages
+//   • no anchor text
+//   • the embedding sidecar is unavailable (returns null)
+//   • the embedding API returns a partial / mismatched result
+const SEMANTIC_REDUNDANCY_WEIGHT = 0.3;
+const SEMANTIC_MIN_ELIGIBLE = 4;
+const SEMANTIC_TARGET_FRACTION = 0.5;
+
+function messageText(m: Message): string {
+  // Message.content is string per types/ovo.ts; keep guard for safety.
+  return typeof m.content === "string" ? m.content : String(m.content ?? "");
+}
+
+export async function pickSemanticCompactionSlice(
+  messages: Message[],
+  anchorText: string,
+): Promise<Message[]> {
+  const eligible = messages.filter(
+    (m) => !m.compacted && m.role !== "system" && m.role !== "summary",
+  );
+  if (eligible.length < SEMANTIC_MIN_ELIGIBLE) return pickCompactionSlice(messages);
+  const anchor = anchorText.trim();
+  if (!anchor) return pickCompactionSlice(messages);
+
+  const texts = eligible.map(messageText);
+  const allTexts = [anchor, ...texts];
+
+  let result;
+  try {
+    result = await embedTexts(allTexts);
+  } catch {
+    return pickCompactionSlice(messages);
+  }
+  if (!result || result.embeddings.length !== allTexts.length) {
+    return pickCompactionSlice(messages);
+  }
+
+  const anchorVec = result.embeddings[0];
+  const msgVecs = result.embeddings.slice(1);
+
+  const scored = eligible.map((m, i) => {
+    const vec = msgVecs[i];
+    const relevance = cosineSimilarity(anchorVec, vec);
+    let maxOther = 0;
+    for (let j = 0; j < msgVecs.length; j++) {
+      if (j === i) continue;
+      const sim = cosineSimilarity(vec, msgVecs[j]);
+      if (sim > maxOther) maxOther = sim;
+    }
+    return {
+      msg: m,
+      score: 1 - relevance + maxOther * SEMANTIC_REDUNDANCY_WEIGHT,
+      length: texts[i].length,
+    };
+  });
+
+  const totalLen = scored.reduce((s, x) => s + x.length, 0);
+  const target = totalLen * SEMANTIC_TARGET_FRACTION;
+  const sorted = [...scored].sort((a, b) => b.score - a.score);
+
+  const picked = new Set<string>();
+  let acc = 0;
+  for (const x of sorted) {
+    if (acc >= target && picked.size >= 2) break;
+    picked.add(x.msg.id);
+    acc += x.length;
+  }
+
+  // Always preserve the two most recent eligible messages
+  const recent = eligible.slice(-2);
+  for (const r of recent) picked.delete(r.id);
+
+  if (picked.size === 0) return pickCompactionSlice(messages);
+  return eligible.filter((m) => picked.has(m.id));
 }
 // [END]
 
@@ -63,10 +156,22 @@ export async function runCompact(
     const allMessages = await listMessages(sessionId);
     const liveMessages = allMessages.filter((m) => !m.compacted);
 
-    const slice = pickCompactionSlice(liveMessages);
+    // [START] Phase 8 — semantic slice when flag on, else legacy oldest-50 %
+    const useSemantic = useFeatureFlagsStore.getState().enable_semantic_compact;
+    let slice: Message[];
+    if (useSemantic) {
+      const lastUser = [...liveMessages]
+        .reverse()
+        .find((m) => m.role === "user");
+      const anchor = lastUser ? messageText(lastUser) : "";
+      slice = await pickSemanticCompactionSlice(liveMessages, anchor);
+    } else {
+      slice = pickCompactionSlice(liveMessages);
+    }
     if (slice.length === 0) {
       return { ok: false, reason: "nothing to compact" };
     }
+    // [END]
 
     // Build wire format for summarize — drop attachments (image blobs can't be summarized).
     const wireMessages: CountTokensMessage[] = slice.map((m) => ({

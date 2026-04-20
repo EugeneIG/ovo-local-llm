@@ -1,6 +1,6 @@
 import { useRef, useState, useEffect, useCallback } from "react";
 import { useTranslation } from "react-i18next";
-import { Pin, PinOff, Pencil, Trash2 } from "lucide-react";
+import { Pin, PinOff, Pencil, Trash2, GitBranch } from "lucide-react";
 import type { Session } from "../types/ovo";
 import { useSessionsStore } from "../store/sessions";
 
@@ -150,6 +150,18 @@ export function SessionItem({ session, isActive, maxContext }: SessionItemProps)
         {session.pinned && (
           <Pin className="w-3 h-3 text-ovo-accent shrink-0" aria-hidden />
         )}
+
+        {/* [START] Phase 8 — branch indicator (forked session) */}
+        {session.parent_session_id && (
+          <span
+            className="shrink-0 inline-flex"
+            title={t("recents.branched")}
+            aria-label={t("recents.branched")}
+          >
+            <GitBranch className="w-3 h-3 text-violet-400" aria-hidden />
+          </span>
+        )}
+        {/* [END] */}
 
         {/* Title or inline rename input */}
         <div className="flex-1 min-w-0">

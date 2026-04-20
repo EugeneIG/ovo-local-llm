@@ -167,9 +167,12 @@ export const SLASH_COMMANDS: ReadonlyArray<SlashCommand> = [
     id: "skills",
     name: "/skills",
     emoji: "✨",
-    description: ".ovo/skills 카탈로그 (구현 예정)",
+    description: ".ovo/skills 카탈로그 — 활성 스킬 토글 (설정 열기)",
     kind: "action",
-    placeholder: true,
+    run: (ctx) => {
+      ctx.openPane?.("settings");
+      return null;
+    },
   },
   {
     id: "translate",
