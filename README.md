@@ -86,12 +86,18 @@ An SVG owl that sits on your desktop and reacts to your coding state (idle / thi
 
 1. Download the latest `OVO_x.y.z_aarch64.dmg` from [**Releases**](https://github.com/ovoment/ovo-local-llm/releases).
 2. Drag **OVO.app** into `/Applications`.
-3. Clear Gatekeeper quarantine (the build is unsigned — working on it):
+3. Clear Gatekeeper metadata (the build is unsigned — working on it):
 
 ```bash
-xattr -cr /Applications/OVO.app
+sudo xattr -rd com.apple.quarantine /Applications/OVO.app
+sudo xattr -rd com.apple.provenance /Applications/OVO.app
 open /Applications/OVO.app
 ```
+
+> **"OVO is damaged and can't be opened"?** macOS (especially Sequoia+) adds
+> extra quarantine metadata to downloaded apps. The two `sudo xattr` commands
+> strip it — that's the only thing standing between you and the app. Apple
+> Developer ID signing is on the roadmap.
 
 **First launch** bootstraps a Python runtime into `~/Library/Application Support/com.ovoment.ovo/runtime/` (≈1.5 GB, ~3 min, one-time). Subsequent launches are instant.
 
