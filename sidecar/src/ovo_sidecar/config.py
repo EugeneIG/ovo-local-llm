@@ -15,6 +15,9 @@ class Settings(BaseSettings):
     # [START] LM Studio cache integration — discover MLX models from LM Studio layout
     lmstudio_cache_dir: Path = Path.home() / ".lmstudio" / "models"
     # [END]
+    # [START] Custom model directories — comma-separated absolute paths
+    extra_model_dirs: str = ""
+    # [END]
     data_dir: Path = Path.home() / "Library" / "Application Support" / "OVO"
 
     default_model: str | None = None
@@ -52,6 +55,12 @@ class Settings(BaseSettings):
     def images_dir(self) -> Path:
         return self.data_dir / "images"
     # [END]
+
+    @property
+    def extra_model_paths(self) -> list[Path]:
+        if not self.extra_model_dirs.strip():
+            return []
+        return [Path(p.strip()) for p in self.extra_model_dirs.split(",") if p.strip()]
 
     def ensure_dirs(self) -> None:
         self.data_dir.mkdir(parents=True, exist_ok=True)

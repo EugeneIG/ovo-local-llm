@@ -36,6 +36,10 @@ class DownloadRequest(BaseModel):
     repo_id: str
 
 
+class DownloadUrlRequest(BaseModel):
+    url: str
+
+
 class SettingsUpdate(BaseModel):
     default_model: str | None = None
     expose_to_network: bool | None = None
@@ -137,6 +141,12 @@ async def search_models(
 @router.post("/models/download")
 async def start_download(req: DownloadRequest) -> dict[str, Any]:
     task = await downloader.start_download(req.repo_id)
+    return _serialize_task(task)
+
+
+@router.post("/models/download-url")
+async def start_download_from_url(req: DownloadUrlRequest) -> dict[str, Any]:
+    task = await downloader.start_download_from_url(req.url)
     return _serialize_task(task)
 
 

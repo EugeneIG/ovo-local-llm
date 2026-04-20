@@ -339,6 +339,14 @@ def scan_all() -> list[ScannedModel]:
             continue
         merged.append(m)
         seen.add(m.repo_id)
+    # [START] Custom model directories — scan each extra path as LM Studio layout
+    for extra_dir in settings.extra_model_paths:
+        if extra_dir.is_dir():
+            for m in scan_lmstudio(extra_dir):
+                if m.repo_id not in seen:
+                    merged.append(m)
+                    seen.add(m.repo_id)
+    # [END]
     _scan_cache = (merged, now)
     return merged
 

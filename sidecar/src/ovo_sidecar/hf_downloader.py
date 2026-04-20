@@ -90,6 +90,33 @@ class HfDownloader:
     def list_tasks(self) -> list[DownloadTask]:
         return list(self._tasks.values())
 
+    @staticmethod
+    def parse_model_url(url: str) -> str | None:
+        """Extract repo_id from a HuggingFace URL.
+        Accepts: https://huggingface.co/org/model or org/model"""
+        import re
+        url = url.strip()
+        m = re.match(r"https?://huggingface\.co/([^/]+/[^/\s?#]+)", url)
+        if m:
+            return m.group(1)
+        if re.match(r"^[^/\s]+/[^/\s]+$", url):
+            return url
+        return None
+
+    async def start_download_from_url(self, url: str) -> DownloadTask:
+        repo_id = self.parse_model_url(url)
+        if not repo_id:
+            task = DownloadTask(
+                task_id=uuid.uuid4().hex[:16],
+                repo_id=url,
+                started_at=time.time(),
+            )
+            task.status = "error"
+            task.error = "Invalid URL. Use a HuggingFace URL (https://huggingface.co/org/model) or repo ID (org/model)."
+            task.finished_at = time.time()
+            return task
+        return await self.start_download(repo_id)
+
     async def start_download(self, repo_id: str) -> DownloadTask:
         task = DownloadTask(task_id=uuid.uuid4().hex[:16], repo_id=repo_id, started_at=time.time())
         self._tasks[task.task_id] = task
