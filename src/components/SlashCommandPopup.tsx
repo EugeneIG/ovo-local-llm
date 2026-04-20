@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import type { SlashCommand } from "../lib/slashCommands";
+import { resolveSlashDescription, type SlashCommand } from "../lib/slashCommands";
 
 // [START] Phase 6.4 — Slash command popup.
 // Presentation-only. Parent owns the filtered list and selected index so
@@ -65,7 +65,7 @@ export function SlashCommandPopup({ items, index, onHover, onSelect }: Props) {
                 )}
               </div>
               <div className="text-[11px] text-ovo-muted/80 mt-0.5 truncate">
-                {cmd.description}
+                {resolveSlashDescription(cmd)}
               </div>
             </div>
           </button>

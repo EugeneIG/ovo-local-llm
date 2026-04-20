@@ -1,3 +1,4 @@
+import i18n from "../i18n";
 import { countTokens, summarize, listModels, type CountTokensMessage } from "./api";
 import { listMessages } from "../db/sessions";
 import { useSessionsStore } from "../store/sessions";
@@ -218,16 +219,22 @@ export async function runCompact(
     if (strategy === "auto") {
       toasts.push({
         kind: "success",
-        message: `자동 요약으로 컨텍스트 ${freedPct}% 확보 ✨`,
+        message: i18n.t("compact.toasts.auto_success", { freed: freedPct }),
       });
     } else {
-      toasts.push({ kind: "success", message: "수동 요약 완료" });
+      toasts.push({
+        kind: "success",
+        message: i18n.t("compact.toasts.manual_success"),
+      });
     }
 
     return { ok: true, freed };
   } catch (e) {
     const reason = e instanceof Error ? e.message : String(e);
-    toasts.push({ kind: "error", message: `요약 실패: ${reason}` });
+    toasts.push({
+      kind: "error",
+      message: i18n.t("compact.toasts.error", { error: reason }),
+    });
     return { ok: false, reason };
   } finally {
     // Always reset compacting flag — even on failure.

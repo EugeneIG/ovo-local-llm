@@ -7,6 +7,7 @@ import { AttachmentChip } from "./AttachmentChip";
 import {
   shouldShowSlashMenu,
   filterSlashCommands,
+  resolveSlashDescription,
   type SlashCommand,
   type SlashCommandContext,
 } from "../lib/slashCommands";
@@ -280,20 +281,26 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput(
         if (!sessionId) {
           useToastsStore.getState().push({
             kind: "error",
-            message: "활성 세션이 없어",
+            message: t("chat_input.toasts.no_active_session"),
           });
           return;
         }
         const toasts = useToastsStore.getState();
-        toasts.push({ kind: "info", message: "세션 축약 시작…" });
+        toasts.push({
+          kind: "info",
+          message: t("chat_input.toasts.compact_started"),
+        });
         const res = await runCompact(sessionId, { strategy: "manual" });
         if (res.ok) {
           toasts.push({
             kind: "success",
-            message: `세션 축약 완료 · ${res.freed} 토큰 확보`,
+            message: t("chat_input.toasts.compact_done", { freed: res.freed }),
           });
         } else {
-          toasts.push({ kind: "error", message: `축약 실패: ${res.reason}` });
+          toasts.push({
+            kind: "error",
+            message: t("chat_input.toasts.compact_failed", { reason: res.reason }),
+          });
         }
       },
       addMemoryNote: async (text) => {
@@ -304,7 +311,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput(
           .create({ title, content: text, tier: "note" });
         useToastsStore.getState().push({
           kind: "success",
-          message: `📝 위키에 추가됨 — ${page.title}`,
+          message: t("chat_input.toasts.memory_added", { title: page.title }),
         });
       },
     };
@@ -315,7 +322,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput(
     if (cmd.placeholder) {
       useToastsStore.getState().push({
         kind: "info",
-        message: `${cmd.name} — ${cmd.description}`,
+        message: `${cmd.name} — ${resolveSlashDescription(cmd)}`,
       });
       setValue("");
       return;

@@ -1,5 +1,6 @@
 // [START] Phase 8.2 — xterm.js terminal component with PTY backend
 import { useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { Terminal as XTerm } from "@xterm/xterm";
@@ -14,6 +15,7 @@ interface TerminalProps {
 }
 
 export function Terminal({ projectRoot, visible }: TerminalProps) {
+  const { t } = useTranslation();
   const containerRef = useRef<HTMLDivElement>(null);
   const xtermRef = useRef<XTerm | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
@@ -380,14 +382,19 @@ export function Terminal({ projectRoot, visible }: TerminalProps) {
       <button
         type="button"
         onClick={toggleKoreanMode}
-        title="한/영 전환 (Ctrl+Shift+K)"
+        title={t("terminal.ime_toggle_title")}
         className={`absolute top-1 right-2 z-10 px-1.5 py-0.5 rounded text-[10px] font-mono font-semibold border transition ${
           koreanMode
             ? "bg-ovo-accent text-ovo-accent-ink border-ovo-accent"
             : "bg-ovo-chip/70 text-ovo-muted border-ovo-chip-border hover:text-ovo-text"
         }`}
       >
-        {koreanMode ? "한" : "EN"}
+        {/* IME state labels — "한" indicates Korean mode, "EN" indicates English.
+            These are keyboard-state indicators that users recognize as-is; we
+            still route through i18n so locale files stay the single source of
+            truth, but the ko/en values intentionally render "한" in both locales
+            when in Korean mode. */}
+        {koreanMode ? t("terminal.ime_ko") : t("terminal.ime_en")}
       </button>
       {/* [END] */}
       <div ref={containerRef} className="w-full h-full" style={{ padding: 4 }} />

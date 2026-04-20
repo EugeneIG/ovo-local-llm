@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import i18n from "i18next";
+import i18n from "../i18n";
 import {
   streamChat,
   webSearch,
@@ -543,7 +543,7 @@ export const useChatStore = create<ChatStoreState>((set, get) => {
       }
       const created = await sessions.createSession({
         model_ref: modelForNew,
-        title: trimmed ? trimmed.slice(0, 24) : "새 대화",
+        title: trimmed ? trimmed.slice(0, 24) : i18n.t("chat_store.default_session_title"),
       });
       sessionId = created.id;
     }
@@ -1000,7 +1000,10 @@ export const useChatStore = create<ChatStoreState>((set, get) => {
           // (approve / deny / always allow card in the chat stream) lands
           // in a follow-up.
           const approved = window.confirm(
-            `🔧 ${call.name}\n\n${JSON.stringify(call.arguments, null, 2)}\n\n도구 실행을 허용할까?`,
+            i18n.t("chat_store.tool_approval_prompt", {
+              name: call.name,
+              args: JSON.stringify(call.arguments, null, 2),
+            }),
           );
           if (!approved) {
             resultJson = JSON.stringify({ error: "User denied tool call." });

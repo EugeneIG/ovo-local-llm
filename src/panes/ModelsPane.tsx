@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import i18n from "../i18n";
 import {
   listModels,
   searchModels,
@@ -36,12 +37,12 @@ function perfColor(tps: number): string {
 function relativeTime(epochMs: number): string {
   const diff = Math.max(0, Date.now() - epochMs);
   const mins = Math.floor(diff / 60_000);
-  if (mins < 1) return "방금";
-  if (mins < 60) return `${mins}분 전`;
+  if (mins < 1) return i18n.t("models_pane.relative.just_now");
+  if (mins < 60) return i18n.t("models_pane.relative.minutes_ago", { minutes: mins });
   const hours = Math.floor(mins / 60);
-  if (hours < 24) return `${hours}시간 전`;
+  if (hours < 24) return i18n.t("models_pane.relative.hours_ago", { hours });
   const days = Math.floor(hours / 24);
-  return `${days}일 전`;
+  return i18n.t("models_pane.relative.days_ago", { days });
 }
 // [END]
 
@@ -464,7 +465,9 @@ export function ModelsPane() {
     }
     useToastsStore.getState().push({
       kind: "success",
-      message: `${repoId.split("/").pop() ?? repoId} 마운트됨`,
+      message: i18n.t("models_pane.mounted_toast", {
+        repoId: repoId.split("/").pop() ?? repoId,
+      }),
     });
   }
   // [END]

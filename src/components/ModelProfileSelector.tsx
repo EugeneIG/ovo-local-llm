@@ -50,7 +50,7 @@ export function ModelProfileSelector() {
             personas can express themselves elsewhere, but the chat header
             and dropdown render as plain-text labels with a neutral icon. */}
         <UserRound className="w-3 h-3" aria-hidden />
-        <span>{active.name}</span>
+        <span>{displayProfileName(active, t)}</span>
         {/* [END] */}
         <ChevronDown
           className={`w-3 h-3 transition-transform ${open ? "rotate-180" : ""}`}

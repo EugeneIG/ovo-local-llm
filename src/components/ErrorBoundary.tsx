@@ -1,4 +1,5 @@
 import { Component, type ErrorInfo, type ReactNode } from "react";
+import i18n from "../i18n";
 
 interface Props {
   children: ReactNode;
@@ -27,12 +28,17 @@ export class ErrorBoundary extends Component<Props, State> {
     const { error, info } = this.state;
     if (!error) return this.props.children;
 
+    // [START] i18n — ErrorBoundary is a class component and can't use the
+    // useTranslation hook, so we reach into the global i18n instance directly.
+    const t = i18n.t.bind(i18n);
+    // [END]
+
     return (
       <div className="h-screen overflow-auto bg-ovo-bg text-ovo-text p-8 font-mono text-sm">
         <div className="max-w-3xl mx-auto">
-          <h1 className="text-xl font-bold text-rose-700 mb-2">렌더 에러 🚨</h1>
+          <h1 className="text-xl font-bold text-rose-700 mb-2">{t("error_boundary.title")}</h1>
           <p className="text-ovo-muted mb-4">
-            앱이 crash 했어. 아래 스택을 복사해서 알려줘.
+            {t("error_boundary.body")}
           </p>
           <pre className="p-4 bg-ovo-surface border border-ovo-border rounded-lg whitespace-pre-wrap break-words mb-3">
             {error.name}: {error.message}
@@ -48,7 +54,7 @@ export class ErrorBoundary extends Component<Props, State> {
             onClick={this.reset}
             className="mt-4 px-4 py-2 rounded-md bg-ovo-accent text-ovo-accent-ink text-xs hover:bg-ovo-accent-hover transition"
           >
-            다시 시도
+            {t("error_boundary.retry")}
           </button>
         </div>
       </div>

@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { emit, listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
@@ -21,12 +22,15 @@ import "./pet.css";
 
 const LS_SIZE_KEY = "ovo:pet_size";
 const DEFAULT_SIZE = 320;
-const SIZE_PRESETS: ReadonlyArray<{ label: string; value: number }> = [
-  { label: "작게 (160)", value: 160 },
-  { label: "보통 (220)", value: 220 },
-  { label: "크게 (320)", value: 320 },
-  { label: "매우 크게 (420)", value: 420 },
+// [START] Size presets — labels are i18n keys; the label is resolved at render
+// time inside handleContextMenu so locale switches take effect immediately.
+const SIZE_PRESETS: ReadonlyArray<{ labelKey: string; value: number }> = [
+  { labelKey: "pet.size.small", value: 160 },
+  { labelKey: "pet.size.medium", value: 220 },
+  { labelKey: "pet.size.large", value: 320 },
+  { labelKey: "pet.size.xlarge", value: 420 },
 ];
+// [END]
 
 function readSavedSize(): number {
   try {
@@ -75,6 +79,7 @@ const SLEEP_AFTER_IDLE_MS = 5 * 60_000; // 5 min of inactivity → sleeping
 // [END]
 
 export function PetApp() {
+  const { t } = useTranslation();
   // [START] Layered pet mood:
   //   pressState   — "struggling" while mouse/pointer is held down
   //   chatState    — last chat-driven event (thinking, typing, happy, error…)
@@ -123,20 +128,20 @@ export function PetApp() {
       items: [
         ...SIZE_PRESETS.map((p) => ({
           id: `size_${p.value}`,
-          text: `${p.label}${p.value === size ? "  ✓" : ""}`,
+          text: `${t(p.labelKey)}${p.value === size ? "  ✓" : ""}`,
           action: () => setSize(p.value),
         })),
         { item: "Separator" },
         {
           id: "focus_main",
-          text: "OVO 열기",
+          text: t("pet.menu.open_ovo"),
           action: () => {
             void invoke("focus_main_window");
           },
         },
         {
           id: "hide",
-          text: "펫 숨기기",
+          text: t("pet.menu.hide"),
           action: () => {
             // [START] Broadcast so the main window's pet store flips the
             // Settings toggle off — otherwise the UI claims the pet is still

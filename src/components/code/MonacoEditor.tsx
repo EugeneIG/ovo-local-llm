@@ -232,7 +232,10 @@ export function MonacoEditor({
         };
       };
 
-      // Use i18n for label; fall back to Korean string if key missing.
+      // Use i18n for label; fall back to English defaults if i18n isn't
+      // ready yet (Monaco mounts before i18next finishes bootstrap in some
+      // edge cases — English is a safer default than Korean for the unsigned
+      // GitHub audience).
       const tr = (key: string, fallback: string): string => {
         try {
           const v = i18n.t(key);
@@ -243,7 +246,7 @@ export function MonacoEditor({
       };
       editor.addAction({
         id: "ovo-add-selection-to-chat",
-        label: tr("code.ctx.add_selection_to_chat", "선택 영역을 에이전트 챗에 추가"),
+        label: tr("code.ctx.add_selection_to_chat", "Add selection to agent chat"),
         contextMenuGroupId: OVO_GROUP,
         contextMenuOrder: 1,
         precondition: "editorHasSelection",
@@ -257,14 +260,14 @@ export function MonacoEditor({
 
       editor.addAction({
         id: "ovo-explain-selection",
-        label: tr("code.ctx.explain_selection", "선택 영역 설명 요청"),
+        label: tr("code.ctx.explain_selection", "Explain selection"),
         contextMenuGroupId: OVO_GROUP,
         contextMenuOrder: 2,
         precondition: "editorHasSelection",
         run: () => {
           const sel = getSelectedText();
           if (!sel) return;
-          const prompt = tr("code.ctx.explain_prompt", "다음 코드를 설명해줘")
+          const prompt = tr("code.ctx.explain_prompt", "Explain the following code")
             + ` (${path}:${sel.startLine}-${sel.endLine}):\n\n\`\`\`\n${sel.text}\n\`\`\``;
           useCodeAgentStore.getState().appendToComposer(prompt);
         },
@@ -272,7 +275,7 @@ export function MonacoEditor({
 
       editor.addAction({
         id: "ovo-review-selection",
-        label: tr("code.ctx.review_selection", "선택 영역 리뷰 요청"),
+        label: tr("code.ctx.review_selection", "Review selection"),
         contextMenuGroupId: OVO_GROUP,
         contextMenuOrder: 3,
         precondition: "editorHasSelection",
@@ -281,7 +284,7 @@ export function MonacoEditor({
           if (!sel) return;
           const prompt = tr(
             "code.ctx.review_prompt",
-            "다음 코드 리뷰해줘. 버그 / 타입 안전성 / 네이밍 / 단순화 여부를 확인하고 수정 제안",
+            "Review the following code — check for bugs, type safety, naming, and simplification; suggest fixes",
           ) + ` (${path}:${sel.startLine}-${sel.endLine}):\n\n\`\`\`\n${sel.text}\n\`\`\``;
           useCodeAgentStore.getState().appendToComposer(prompt);
         },
@@ -289,7 +292,7 @@ export function MonacoEditor({
 
       editor.addAction({
         id: "ovo-add-file-to-chat",
-        label: tr("code.ctx.add_file_to_chat", "이 파일을 에이전트 챗에 추가"),
+        label: tr("code.ctx.add_file_to_chat", "Add file to agent chat"),
         contextMenuGroupId: OVO_GROUP,
         contextMenuOrder: 4,
         run: () => {

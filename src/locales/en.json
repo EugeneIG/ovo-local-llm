@@ -788,7 +788,17 @@
     }
   },
   "pet": {
-    "double_click_hint": "Double-click to focus app"
+    "double_click_hint": "Double-click to focus app",
+    "size": {
+      "small": "Small (160)",
+      "medium": "Medium (220)",
+      "large": "Large (320)",
+      "xlarge": "Extra large (420)"
+    },
+    "menu": {
+      "open_ovo": "Open OVO",
+      "hide": "Hide pet"
+    }
   },
   "recents": {
     "title": "Recents",
@@ -832,6 +842,73 @@
     "auto_success": "Auto-compact freed {{freed}}% of context ✨",
     "manual_success": "Manual compact done",
     "error": "Compact failed: {{error}}",
-    "nothing_to_compact": "Nothing to compact"
+    "nothing_to_compact": "Nothing to compact",
+    "toasts": {
+      "auto_success": "Auto-summary freed {{freed}}% of context ✨",
+      "manual_success": "Manual summary complete",
+      "error": "Summary failed: {{error}}"
+    }
+  },
+  "error_boundary": {
+    "title": "Render error 🚨",
+    "body": "The app crashed. Copy the stack below and share it with us.",
+    "retry": "Try again"
+  },
+  "terminal": {
+    "ime_toggle_title": "Toggle Korean/English (Ctrl+Shift+K)",
+    "ime_ko": "한",
+    "ime_en": "EN"
+  },
+  "models_pane": {
+    "relative": {
+      "just_now": "just now",
+      "minutes_ago": "{{minutes}} min ago",
+      "hours_ago": "{{hours}} hr ago",
+      "days_ago": "{{days}} d ago"
+    },
+    "mounted_toast": "{{repoId}} mounted"
+  },
+  "chat_store": {
+    "default_session_title": "New chat",
+    "tool_approval_prompt": "🔧 {{name}}\n\n{{args}}\n\nAllow this tool call?"
+  },
+  "slash": {
+    "clear": {
+      "description": "Clear the current conversation"
+    },
+    "profile": {
+      "description": "Switch to the next model profile"
+    },
+    "wiki": {
+      "description": "Open the Wiki tab"
+    },
+    "models": {
+      "description": "Open the Models tab"
+    },
+    "settings": {
+      "description": "Open the Settings tab"
+    },
+    "compact": {
+      "description": "Manually compact this session (old messages → summary)"
+    },
+    "memory": {
+      "description": "Add a note to the Wiki — `/memory text to capture`"
+    },
+    "skills": {
+      "description": ".ovo/skills catalog — toggle active skills (opens Settings)"
+    },
+    "translate": {
+      "description": "Translate input text (coming soon)",
+      "template_prefix": "Translate the following:\n"
+    }
+  },
+  "chat_input": {
+    "toasts": {
+      "no_active_session": "No active session",
+      "compact_started": "Compacting session…",
+      "compact_done": "Session compacted · freed {{freed}} tokens",
+      "compact_failed": "Compact failed: {{reason}}",
+      "memory_added": "📝 Saved to Wiki — {{title}}"
+    }
   }
 }

@@ -1,3 +1,5 @@
+import i18n from "../i18n";
+
 // [START] Phase 6.4 — Slash command infrastructure.
 // Triggered when the chat input starts with '/' on the first line AND the
 // cursor has not left that prefix. Commands can either run an imperative
@@ -27,7 +29,8 @@ export interface SlashCommand {
   id: string;            // matched against user typed token (after '/')
   aliases?: string[];    // alternate match strings
   name: string;          // user-visible label
-  description: string;   // one-line help
+  description: string;   // one-line help (plain text, pre-resolved from i18n)
+  descriptionKey?: string; // optional i18n key; when set, resolveSlashDescription returns t(descriptionKey)
   emoji?: string;        // optional visual hint
   kind: SlashCommandKind;
   /** action handler — returns text to replace the slash prefix with,
@@ -78,13 +81,37 @@ export function shouldShowSlashMenu(value: string): {
 }
 // [END]
 
+// [START] resolveSlashDescription — the built-in commands carry a
+// `descriptionKey` i18n pointer; the pre-resolved `description` field is kept
+// for back-compat (e.g. snippet-sourced commands that inject raw text). This
+// helper is the single entrypoint callers should use to render descriptions.
+export function resolveSlashDescription(cmd: SlashCommand): string {
+  if (cmd.descriptionKey) return i18n.t(cmd.descriptionKey);
+  return cmd.description;
+}
+// [END]
+
+// [START] buildTranslatedDescription — build-site helper that snapshots the
+// current i18n value into the plain `description` field. We call this at
+// registry access time so consumers that rely on the plain field (e.g.
+// legacy code paths) still see the localized string.
+function withDescription(cmd: Omit<SlashCommand, "description"> & { descriptionKey: string }): SlashCommand {
+  return {
+    ...cmd,
+    description: i18n.t(cmd.descriptionKey),
+  };
+}
+// [END]
+
 // [START] Built-in command registry.
-export const SLASH_COMMANDS: ReadonlyArray<SlashCommand> = [
+// Descriptions are i18n-keyed; `description` is resolved lazily via getter so
+// locale switches at runtime take effect without rebuilding the registry.
+const BUILTIN_SLASH_COMMANDS: ReadonlyArray<Omit<SlashCommand, "description"> & { descriptionKey: string }> = [
   {
     id: "clear",
     name: "/clear",
     emoji: "🧹",
-    description: "현재 대화 비우기",
+    descriptionKey: "slash.clear.description",
     kind: "action",
     run: (ctx) => {
       if (ctx.clearChat) void ctx.clearChat();
@@ -96,7 +123,7 @@ export const SLASH_COMMANDS: ReadonlyArray<SlashCommand> = [
     aliases: ["프로필"],
     name: "/profile",
     emoji: "👤",
-    description: "다음 모델 프로필로 전환",
+    descriptionKey: "slash.profile.description",
     kind: "action",
     run: (ctx) => {
       ctx.cycleProfile?.();
@@ -107,7 +134,7 @@ export const SLASH_COMMANDS: ReadonlyArray<SlashCommand> = [
     id: "wiki",
     name: "/wiki",
     emoji: "📚",
-    description: "위키 탭 열기",
+    descriptionKey: "slash.wiki.description",
     kind: "action",
     run: (ctx) => {
       ctx.openPane?.("wiki");
@@ -118,7 +145,7 @@ export const SLASH_COMMANDS: ReadonlyArray<SlashCommand> = [
     id: "models",
     name: "/models",
     emoji: "📦",
-    description: "모델 탭 열기",
+    descriptionKey: "slash.models.description",
     kind: "action",
     run: (ctx) => {
       ctx.openPane?.("models");
@@ -129,7 +156,7 @@ export const SLASH_COMMANDS: ReadonlyArray<SlashCommand> = [
     id: "settings",
     name: "/settings",
     emoji: "⚙️",
-    description: "설정 탭 열기",
+    descriptionKey: "slash.settings.description",
     kind: "action",
     run: (ctx) => {
       ctx.openPane?.("settings");
@@ -143,7 +170,7 @@ export const SLASH_COMMANDS: ReadonlyArray<SlashCommand> = [
     id: "compact",
     name: "/compact",
     emoji: "🗜",
-    description: "현재 세션 수동 축약 (낡은 메시지 → 요약)",
+    descriptionKey: "slash.compact.description",
     kind: "action",
     run: (ctx) => {
       if (ctx.compact) void ctx.compact();
@@ -154,7 +181,7 @@ export const SLASH_COMMANDS: ReadonlyArray<SlashCommand> = [
     id: "memory",
     name: "/memory",
     emoji: "🧠",
-    description: "위키에 Note 추가 — `/memory 기록할 텍스트`",
+    descriptionKey: "slash.memory.description",
     kind: "action",
     run: (ctx, args) => {
       const text = args.trim();
@@ -167,7 +194,7 @@ export const SLASH_COMMANDS: ReadonlyArray<SlashCommand> = [
     id: "skills",
     name: "/skills",
     emoji: "✨",
-    description: ".ovo/skills 카탈로그 — 활성 스킬 토글 (설정 열기)",
+    descriptionKey: "slash.skills.description",
     kind: "action",
     run: (ctx) => {
       ctx.openPane?.("settings");
@@ -178,12 +205,17 @@ export const SLASH_COMMANDS: ReadonlyArray<SlashCommand> = [
     id: "translate",
     name: "/translate",
     emoji: "🌐",
-    description: "입력한 텍스트 번역 (구현 예정)",
+    descriptionKey: "slash.translate.description",
     kind: "template",
-    template: (args) => (args ? `다음 문장을 번역해:\n${args}` : "다음 문장을 번역해:\n"),
+    template: (args) => {
+      const prefix = i18n.t("slash.translate.template_prefix");
+      return args ? `${prefix}${args}` : prefix;
+    },
   },
   // [END]
 ];
+
+export const SLASH_COMMANDS: ReadonlyArray<SlashCommand> = BUILTIN_SLASH_COMMANDS.map(withDescription);
 // [END]
 
 // [START] Filter + sort by how well the token prefixes the command id/name
