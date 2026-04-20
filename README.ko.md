@@ -3,6 +3,10 @@
 </p>
 
 <p align="center">
+  <a href="https://github.com/ovoment/ovo-local-llm/stargazers"><img src="https://img.shields.io/github/stars/ovoment/ovo-local-llm?style=flat&logo=github&color=yellow" alt="Stars"></a>
+  <a href="https://github.com/ovoment/ovo-local-llm/releases"><img src="https://img.shields.io/github/downloads/ovoment/ovo-local-llm/total?logo=github&color=brightgreen" alt="Downloads"></a>
+  <a href="https://github.com/ovoment/ovo-local-llm/releases/latest"><img src="https://img.shields.io/github/v/release/ovoment/ovo-local-llm?logo=github&color=blue" alt="Release"></a>
+  <a href="https://github.com/ovoment/ovo-local-llm/issues"><img src="https://img.shields.io/github/issues/ovoment/ovo-local-llm?logo=github" alt="Issues"></a>
   <a href="https://ko-fi.com/ovoment"><img src="https://img.shields.io/badge/Ko--fi로%20응원하기-ff5e5b?logo=ko-fi&logoColor=white" alt="Ko-fi"></a>
   <img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License">
   <img src="https://img.shields.io/badge/macOS-13%2B-black?logo=apple&logoColor=white" alt="macOS 13+">
