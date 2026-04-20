@@ -89,19 +89,45 @@ An SVG owl that sits on your desktop and reacts to your coding state (idle / thi
 ## 📦 Install
 
 1. Download the latest `OVO_x.y.z_aarch64.dmg` from [**Releases**](https://github.com/ovoment/ovo-local-llm/releases).
-2. Drag **OVO.app** into `/Applications`.
-3. Clear Gatekeeper metadata (the build is unsigned — working on it):
+2. Open the DMG and drag **OVO.app** onto the **Applications** shortcut.
+3. Back in the DMG window, double-click **`Install OVO.command`**.
+   It shows you exactly the one command it will run, you click **Run**, done.
+
+That's it — no Terminal required.
+
+<details>
+<summary>Why the third step? (click to expand)</summary>
+
+OVO's build is not yet signed with an Apple Developer ID (the $99/yr
+membership is on the roadmap — see the milestone in [Issues](https://github.com/ovoment/ovo-local-llm/issues)).
+Without a signature, macOS flags the app with `com.apple.quarantine` and
+refuses to launch it with the classic *"OVO is damaged and can't be opened"*
+dialog.
+
+`Install OVO.command` runs a single command to clear that flag:
 
 ```bash
-sudo xattr -rd com.apple.quarantine /Applications/OVO.app
-sudo xattr -rd com.apple.provenance /Applications/OVO.app
+xattr -rd com.apple.quarantine /Applications/OVO.app
+```
+
+No `sudo`, no network, no background processes. The script is short and
+auditable — read it here before running:
+[scripts/dmg-templates/Install OVO.command](scripts/dmg-templates/Install%20OVO.command)
+
+</details>
+
+<details>
+<summary>Prefer to do it by hand?</summary>
+
+```bash
+xattr -rd com.apple.quarantine /Applications/OVO.app
 open /Applications/OVO.app
 ```
 
-> **"OVO is damaged and can't be opened"?** macOS (especially Sequoia+) adds
-> extra quarantine metadata to downloaded apps. The two `sudo xattr` commands
-> strip it — that's the only thing standing between you and the app. Apple
-> Developer ID signing is on the roadmap.
+If your `/Applications/OVO.app` happens to be owned by `root` (rare on
+recent macOS), prefix with `sudo`.
+
+</details>
 
 **First launch** bootstraps a Python runtime into `~/Library/Application Support/com.ovoment.ovo/runtime/` (≈1.5 GB, ~3 min, one-time). Subsequent launches are instant.
 
