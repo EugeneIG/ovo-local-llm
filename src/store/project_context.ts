@@ -69,9 +69,10 @@ interface ProjectContextState {
   // [END]
 }
 
-// [START] Default enabled state — all 3 filenames true
+// [START] Default enabled state — all off for lean first-run experience.
+// Power users enable in Settings → Project Context.
 function defaultEnabled(): Record<string, boolean> {
-  return Object.fromEntries(CONTEXT_FILENAMES.map((n) => [n, true]));
+  return Object.fromEntries(CONTEXT_FILENAMES.map((n) => [n, false]));
 }
 // [END]
 

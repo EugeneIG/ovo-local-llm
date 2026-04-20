@@ -53,18 +53,21 @@ export const FLAG_KEYS: ReadonlyArray<keyof FeatureFlags> = [
   "enable_tts_response",
 ];
 
+// [START] Defaults start lean — minimal system prompt for fast first response.
+// Power users enable features as needed in Settings → Feature Flags.
 const DEFAULTS: FeatureFlags = {
-  enable_skills: true,
-  enable_personas: true,
-  enable_skills_injection: true,
-  enable_wiki_retrieval: true,
-  enable_memory_tools: true,
-  enable_wiki_auto_capture: false, // implemented but opt-in for predictability
-  enable_semantic_compact: true,   // falls back to time-based if sidecar down
+  enable_skills: false,
+  enable_personas: false,
+  enable_skills_injection: false,
+  enable_wiki_retrieval: false,
+  enable_memory_tools: false,
+  enable_wiki_auto_capture: false,
+  enable_semantic_compact: false,
   enable_model_recommendation: true, // local heuristic, no extra cost
-  enable_voice_input: false,   // requires mlx-whisper; off by default
-  enable_tts_response: false,  // requires macOS say; off by default
+  enable_voice_input: false,
+  enable_tts_response: false,
 };
+// [END]
 
 interface FeatureFlagsState extends FeatureFlags {
   load: () => void;

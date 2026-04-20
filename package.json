@@ -1,7 +1,7 @@
 {
   "name": "ovo",
-  "version": "0.0.1",
-  "description": "All the LLMs. On device. — with a reactive SVG owl mascot",
+  "version": "0.0.2",
+  "description": "Local Claude Code for Apple Silicon — AI coding agent + chat + image gen, zero cloud",
   "type": "module",
   "private": true,
   "scripts": {

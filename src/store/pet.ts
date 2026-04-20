@@ -14,9 +14,11 @@ interface PetState {
 
 function readPetEnabled(): boolean {
   try {
-    return localStorage.getItem(LS_KEY) === "true";
+    const v = localStorage.getItem(LS_KEY);
+    if (v === null) return true;
+    return v === "true";
   } catch {
-    return false;
+    return true;
   }
 }
 

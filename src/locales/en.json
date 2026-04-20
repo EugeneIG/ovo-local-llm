@@ -909,6 +909,15 @@
       "compact_done": "Session compacted · freed {{freed}} tokens",
       "compact_failed": "Compact failed: {{reason}}",
       "memory_added": "📝 Saved to Wiki — {{title}}"
+    },
+    "wiki_capture": {
+      "session_prefix": "Session",
+      "auto_summary": "Auto-captured session summary — archive or delete if not needed.",
+      "model": "Model",
+      "captured_at": "Captured at",
+      "session_id": "Session ID",
+      "first_question": "First question",
+      "last_answer": "Last answer"
     }
   }
 }

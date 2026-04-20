@@ -909,6 +909,15 @@
       "compact_done": "세션 축약 완료 · {{freed}} 토큰 확보",
       "compact_failed": "축약 실패: {{reason}}",
       "memory_added": "📝 위키에 추가됨 — {{title}}"
+    },
+    "wiki_capture": {
+      "session_prefix": "세션",
+      "auto_summary": "자동 캡처된 세션 요약 — 필요 없으면 아카이브하거나 삭제해도 돼.",
+      "model": "모델",
+      "captured_at": "캡처 시각",
+      "session_id": "세션 ID",
+      "first_question": "첫 질문",
+      "last_answer": "마지막 답변"
     }
   }
 }

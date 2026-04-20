@@ -2,6 +2,7 @@ import { createWikiPage } from "../db/wiki";
 import { listLiveMessages } from "../db/sessions";
 import { useFeatureFlagsStore } from "../store/feature_flags";
 import { useProjectContextStore } from "../store/project_context";
+import i18n from "../i18n";
 
 // [START] Phase 8 — Wiki auto-capture.
 // When a chat session is left (selectSession to a different id) or deleted,
@@ -91,20 +92,21 @@ export async function autoCaptureSession(input: AutoCaptureInput): Promise<void>
   if (!userText || !asstText) return;
 
   const titleSeed = (input.sessionTitle ?? userText).trim();
-  const title = `[세션] ${titleSeed.slice(0, 60)}`.replace(/\s+/g, " ");
+  const t = i18n.t;
+  const title = `[${t("wiki_capture.session_prefix", "Session")}] ${titleSeed.slice(0, 60)}`.replace(/\s+/g, " ");
 
   const body = [
-    "> 자동 캡처된 세션 요약 — 필요 없으면 아카이브하거나 삭제해도 돼.",
+    `> ${t("wiki_capture.auto_summary", "Auto-captured session summary — archive or delete if not needed.")}`,
     "",
-    `**모델**: ${input.modelRef ?? "unknown"}`,
-    `**캡처 시각**: ${kstNow()}`,
-    `**세션 ID**: \`${input.sessionId}\``,
+    `**${t("wiki_capture.model", "Model")}**: ${input.modelRef ?? "unknown"}`,
+    `**${t("wiki_capture.captured_at", "Captured at")}**: ${kstNow()}`,
+    `**${t("wiki_capture.session_id", "Session ID")}**: \`${input.sessionId}\``,
     "",
-    "## 첫 질문",
+    `## ${t("wiki_capture.first_question", "First question")}`,
     "",
     userText.slice(0, 1200),
     "",
-    "## 마지막 답변",
+    `## ${t("wiki_capture.last_answer", "Last answer")}`,
     "",
     asstText.slice(0, 2400),
   ].join("\n");

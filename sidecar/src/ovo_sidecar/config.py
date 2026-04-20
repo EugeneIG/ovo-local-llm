@@ -29,8 +29,8 @@ class Settings(BaseSettings):
     expose_to_network: bool = False
 
     claude_integration_enabled: bool = False
-    claude_read_claude_md: bool = True
-    claude_read_settings: bool = True
+    claude_read_claude_md: bool = False
+    claude_read_settings: bool = False
     claude_read_plugins: bool = False
 
     log_level: str = "info"
