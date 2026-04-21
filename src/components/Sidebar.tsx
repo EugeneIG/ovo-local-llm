@@ -1,6 +1,7 @@
 import { useTranslation } from "react-i18next";
-import { MessageSquare, Code2, Image as ImageIcon, BookOpen, Package, Settings, Info, GraduationCap, Blend, ArrowLeftRight } from "lucide-react";
-import type { ComponentType, SVGProps } from "react";
+import { MessageSquare, Code2, Image as ImageIcon, BookOpen, Package, Settings, Info, GraduationCap, Blend, ArrowLeftRight, Activity } from "lucide-react";
+import { SystemStatusPopover } from "./SystemStatusPopover";
+import { useState, type ComponentType, type SVGProps } from "react";
 import { RecentsPanel } from "./RecentsPanel";
 import { CodeRecentsPanel } from "./code/CodeRecentsPanel";
 import { useThemeStore } from "../store/theme";
@@ -46,6 +47,7 @@ interface SidebarProps {
 export function Sidebar({ active, onSelect }: SidebarProps) {
   const { t } = useTranslation();
   const effectiveTheme = useThemeStore((s) => s.effective);
+  const [sidecarOpen, setSidecarOpen] = useState(false);
   // [START] Two logo assets with identical 238×88 dimensions (dark variant
   // generated from the black source so position stays pixel-perfect).
   const logoSrc =
@@ -134,15 +136,34 @@ export function Sidebar({ active, onSelect }: SidebarProps) {
       </div>
       {/* [END] */}
 
-      {/* [START] Bottom dock — settings + info as small centered icon buttons */}
-      <div className="flex items-center justify-center gap-4 py-3 border-t border-ovo-border">
+      {/* [START] Bottom dock — sidecar + models + settings + info */}
+      <div className="relative flex items-center justify-center gap-4 py-3 border-t border-ovo-border">
+        {/* Sidecar status popover — anchored above dock, centered */}
+        {sidecarOpen && (
+          <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-[280px] z-30">
+            <SystemStatusPopover open active={active} />
+          </div>
+        )}
+        <button
+          type="button"
+          onClick={() => setSidecarOpen((v) => !v)}
+          title={t("nav.sidecar")}
+          aria-label={t("nav.sidecar")}
+          className={`p-1.5 rounded-md transition ${
+            sidecarOpen
+              ? "text-ovo-accent bg-ovo-nav-active"
+              : "text-ovo-muted hover:bg-ovo-nav-active-hover hover:text-ovo-text"
+          }`}
+        >
+          <Activity className="w-4 h-4" aria-hidden />
+        </button>
         {BOTTOM_ITEMS.map(({ key, icon: Icon }) => {
           const isActive = key === active;
           return (
             <button
               key={key}
               type="button"
-              onClick={() => onSelect(key)}
+              onClick={() => { onSelect(key); setSidecarOpen(false); }}
               title={t(`nav.${key}`)}
               aria-label={t(`nav.${key}`)}
               className={`p-1.5 rounded-md transition ${

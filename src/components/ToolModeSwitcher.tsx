@@ -2,17 +2,7 @@ import { useTranslation } from "react-i18next";
 import { Zap, MessageCircle, ClipboardList } from "lucide-react";
 import { useToolModeStore, type ToolMode } from "../store/tool_mode";
 
-// [START] Phase 6.4 — inline tool-mode switcher for the ChatPane header.
-// Mirrors SettingsPane's ToolModeSection but compact: three pills, icon +
-// short label, persists via the same zustand store. Keeps Bypass / Ask /
-// Plan one click away instead of buried in Settings.
-
-interface ModeOption {
-  key: ToolMode;
-  icon: typeof Zap;
-}
-
-const MODES: ReadonlyArray<ModeOption> = [
+const MODES: ReadonlyArray<{ key: ToolMode; icon: typeof Zap }> = [
   { key: "bypass", icon: Zap },
   { key: "ask", icon: MessageCircle },
   { key: "plan", icon: ClipboardList },
@@ -23,34 +13,24 @@ export function ToolModeSwitcher() {
   const mode = useToolModeStore((s) => s.mode);
   const setMode = useToolModeStore((s) => s.setMode);
 
+  const currentIdx = MODES.findIndex((m) => m.key === mode);
+  const current = MODES[currentIdx >= 0 ? currentIdx : 0];
+  const Icon = current.icon;
+
+  const cycle = () => {
+    const nextIdx = (currentIdx + 1) % MODES.length;
+    setMode(MODES[nextIdx].key);
+  };
+
   return (
-    <div
-      role="radiogroup"
-      aria-label={t("chat.mode.label")}
-      className="inline-flex items-center gap-0.5 p-0.5 rounded-full bg-ovo-surface-solid border border-ovo-border"
+    <button
+      type="button"
+      onClick={cycle}
+      title={t(`chat.mode.${mode}_hint`)}
+      className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-ovo-border bg-ovo-surface-solid text-xs font-medium text-ovo-text hover:bg-ovo-bg transition"
     >
-      {MODES.map(({ key, icon: Icon }) => {
-        const active = mode === key;
-        return (
-          <button
-            key={key}
-            type="button"
-            role="radio"
-            aria-checked={active}
-            onClick={() => setMode(key)}
-            title={t(`chat.mode.${key}_hint`)}
-            className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-[11px] font-medium transition ${
-              active
-                ? "bg-ovo-accent text-ovo-accent-ink"
-                : "text-ovo-muted hover:text-ovo-text hover:bg-ovo-bg"
-            }`}
-          >
-            <Icon className="w-3 h-3" aria-hidden />
-            <span>{t(`chat.mode.${key}`)}</span>
-          </button>
-        );
-      })}
-    </div>
+      <Icon className="w-3.5 h-3.5 text-ovo-accent" aria-hidden />
+      <span>{t(`chat.mode.${mode}`)}</span>
+    </button>
   );
 }
-// [END]

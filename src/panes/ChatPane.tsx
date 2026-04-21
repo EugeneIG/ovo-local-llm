@@ -9,10 +9,10 @@ import { useChatSettingsStore } from "../store/chat_settings";
 import { ModelSelector } from "../components/ModelSelector";
 import { ChatInput, type ChatInputHandle } from "../components/ChatInput";
 import { ModelProfileSelector } from "../components/ModelProfileSelector";
-import { SystemStatusPopover } from "../components/SystemStatusPopover";
 import { SidecarOfflineCard } from "../components/SidecarOfflineCard";
 import { KnowledgeBasePanel } from "../components/KnowledgeBasePanel";
-import { Activity, BookOpen } from "lucide-react";
+import { ToolModeSwitcher } from "../components/ToolModeSwitcher";
+import { BookOpen } from "lucide-react";
 import { ChatMessageBubble } from "../components/ChatMessageBubble";
 import { Owl } from "../components/Owl";
 import type { OvoModel, Message } from "../types/ovo";
@@ -25,9 +25,6 @@ export function ChatPane() {
   const error = useChatStore((s) => s.error);
   const sendMessage = useChatStore((s) => s.sendMessage);
   const stopStreaming = useChatStore((s) => s.stopStreaming);
-  // [START] HDD status popover toggle (left of ChatInput's + button)
-  const [hddOpen, setHddOpen] = useState(false);
-  // [END]
   // [START] KB panel popover toggle
   const [kbOpen, setKbOpen] = useState(false);
   // [END]
@@ -329,29 +326,9 @@ export function ChatPane() {
         queueCount={queueCount}
         modelCapabilities={currentCapabilities}
         leftSlot={
-          <div className="flex gap-1.5 shrink-0">
-            {/* HDD status */}
-            <div className="relative">
-              {hddOpen && (
-                <div className="absolute bottom-full left-0 mb-2 w-[320px] z-20">
-                  <SystemStatusPopover open active="chat" />
-                </div>
-              )}
-              <button
-                type="button"
-                onClick={() => { setHddOpen((v) => !v); setKbOpen(false); }}
-                title={t("chat.system_status")}
-                aria-label={t("chat.system_status")}
-                aria-pressed={hddOpen}
-                className={`h-[40px] w-[40px] rounded-lg border border-ovo-border flex items-center justify-center transition ${
-                  hddOpen
-                    ? "bg-ovo-nav-active text-ovo-text"
-                    : "bg-ovo-surface-solid text-ovo-muted hover:bg-ovo-bg hover:text-ovo-text"
-                }`}
-              >
-                <Activity className="w-4 h-4" aria-hidden />
-              </button>
-            </div>
+          <div className="flex items-center gap-1.5 shrink-0">
+            {/* Tool mode */}
+            <ToolModeSwitcher />
             {/* KB panel */}
             <div className="relative">
               {kbOpen && (
@@ -361,7 +338,7 @@ export function ChatPane() {
               )}
               <button
                 type="button"
-                onClick={() => { setKbOpen((v) => !v); setHddOpen(false); }}
+                onClick={() => setKbOpen((v) => !v)}
                 title={t("kb.title")}
                 aria-label={t("kb.title")}
                 aria-pressed={kbOpen}
