@@ -110,15 +110,17 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput(
   // [START] Phase B — dynamic file accept based on model capabilities
   const hasVision = modelCapabilities.includes("vision");
   const hasAudio = modelCapabilities.includes("audio");
+  // [START] Document files always accepted (text extraction via kordoc/sidecar);
+  // image/audio additionally accepted when model has matching capabilities.
+  const docAccept = ".pdf,.hwp,.hwpx,.docx,.xlsx,.pptx,.txt,.md,.csv,.json";
   const fileAccept = hasVision && hasAudio
-    ? "image/*,audio/*"
+    ? `image/*,audio/*,${docAccept}`
     : hasVision
-      ? "image/*"
+      ? `image/*,${docAccept}`
       : hasAudio
-        ? "audio/*"
-        : "*/*";
-  // Attach button disabled when model is text-only (no vision, no audio)
-  const attachSupported = hasVision || hasAudio;
+        ? `audio/*,${docAccept}`
+        : docAccept;
+  const attachSupported = true;
   // [END]
 
   const submit = () => {

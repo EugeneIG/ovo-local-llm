@@ -134,13 +134,15 @@ export function ChatPane() {
   const currentCapabilities = currentModelObj?.capabilities ?? [];
   // [END]
 
-  // [START] drag-and-drop file attach — entire ChatPane is a drop zone; rejects if model has no vision/audio
+  // [START] drag-and-drop file attach — entire ChatPane is a drop zone.
+  // Document files (PDF/HWP/DOCX/XLSX) are always accepted for text extraction;
+  // image/audio files require matching model capabilities.
   const chatInputRef = useRef<ChatInputHandle>(null);
   const [dropState, setDropState] = useState<"idle" | "accept" | "reject">("idle");
   const dragDepthRef = useRef(0);
   const hasVision = currentCapabilities.includes("vision");
   const hasAudio = currentCapabilities.includes("audio");
-  const attachSupported = !inputDisabled && (hasVision || hasAudio);
+  const attachSupported = !inputDisabled;
 
   const isFileDrag = (e: ReactDragEvent) => Array.from(e.dataTransfer.types).includes("Files");
 
@@ -166,10 +168,12 @@ export function ChatPane() {
     dragDepthRef.current = 0;
     setDropState("idle");
     if (!attachSupported) return;
+    const docExts = new Set(["pdf","hwp","hwpx","docx","xlsx","pptx","txt","md","csv","json"]);
     const files = Array.from(e.dataTransfer.files).filter((f) => {
       if (hasVision && f.type.startsWith("image/")) return true;
       if (hasAudio && f.type.startsWith("audio/")) return true;
-      return false;
+      const ext = f.name.split(".").pop()?.toLowerCase() ?? "";
+      return docExts.has(ext);
     });
     if (files.length === 0) return;
     chatInputRef.current?.addFiles(files);

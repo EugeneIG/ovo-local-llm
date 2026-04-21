@@ -11,7 +11,7 @@
 export interface ExtractedFile {
   filename: string;
   mime: string;
-  kind: "text" | "pdf" | "excel" | "docx" | "skipped";
+  kind: "text" | "pdf" | "excel" | "docx" | "hwp" | "kordoc" | "skipped";
   text: string;
   /** True when the extracted text was truncated due to size. */
   truncated?: boolean;
@@ -95,6 +95,64 @@ export async function extractAttachmentText(file: File): Promise<ExtractedFile> 
       text: "",
       note: "media handled via multimodal parts",
     };
+  }
+
+  // HWP / HWPX — route through sidecar kordoc parser (best-in-class Korean doc parsing).
+  if (ext === "hwp" || ext === "hwpx") {
+    try {
+      const form = new FormData();
+      form.append("file", file);
+      const resp = await fetch("http://127.0.0.1:11437/ovo/parse", {
+        method: "POST",
+        body: form,
+      });
+      if (!resp.ok) {
+        const err = await resp.text().catch(() => "");
+        return {
+          filename: name, mime, kind: "skipped", text: "",
+          note: `hwp parse failed: sidecar ${resp.status} ${err}`,
+        };
+      }
+      const payload = (await resp.json()) as {
+        full_text: string;
+        pages: number;
+        tokens_estimate: number;
+      };
+      const { text, truncated } = truncate(payload.full_text);
+      return { filename: name, mime, kind: "hwp", text, truncated };
+    } catch (e) {
+      return {
+        filename: name, mime, kind: "skipped", text: "",
+        note: `hwp parse failed: ${e instanceof Error ? e.message : String(e)}`,
+      };
+    }
+  }
+
+  // PPTX — route through sidecar kordoc parser.
+  if (ext === "pptx") {
+    try {
+      const form = new FormData();
+      form.append("file", file);
+      const resp = await fetch("http://127.0.0.1:11437/ovo/parse", {
+        method: "POST",
+        body: form,
+      });
+      if (!resp.ok) {
+        const err = await resp.text().catch(() => "");
+        return {
+          filename: name, mime, kind: "skipped", text: "",
+          note: `pptx parse failed: sidecar ${resp.status} ${err}`,
+        };
+      }
+      const payload = (await resp.json()) as { full_text: string };
+      const { text, truncated } = truncate(payload.full_text);
+      return { filename: name, mime, kind: "kordoc", text, truncated };
+    } catch (e) {
+      return {
+        filename: name, mime, kind: "skipped", text: "",
+        note: `pptx parse failed: ${e instanceof Error ? e.message : String(e)}`,
+      };
+    }
   }
 
   // Excel — SheetJS — all sheets concatenated as CSV with `### Sheet: NAME` headers.
