@@ -106,15 +106,26 @@ async def _run_blend(run: BlendRun, config: BlendConfig) -> None:
 
             from mlx_lm import load as mlx_load  # type: ignore[import-untyped]
 
+            def _flatten_params(params: dict, prefix: str = "") -> dict:
+                """Flatten nested parameter dict into dot-separated keys."""
+                flat: dict = {}
+                for k, v in params.items():
+                    full_key = f"{prefix}.{k}" if prefix else k
+                    if isinstance(v, dict):
+                        flat.update(_flatten_params(v, full_key))
+                    else:
+                        flat[full_key] = v
+                return flat
+
             logger.info("Loading model 1: %s", config.sources[0].repo_id)
             run.progress = 0.1
             model_a, tokenizer = mlx_load(config.sources[0].repo_id)
-            weights_a = dict(model_a.parameters())
+            weights_a = _flatten_params(dict(model_a.parameters()))
 
             logger.info("Loading model 2: %s", config.sources[1].repo_id)
             run.progress = 0.3
             model_b, _ = mlx_load(config.sources[1].repo_id)
-            weights_b = dict(model_b.parameters())
+            weights_b = _flatten_params(dict(model_b.parameters()))
 
             if _cancel_flags.get(run.run_id, False):
                 raise KeyboardInterrupt("Blend cancelled")
@@ -157,7 +168,20 @@ async def _run_blend(run: BlendRun, config: BlendConfig) -> None:
             run.progress = 0.9
             logger.info("Saving blended model to %s", output_dir)
 
-            mx.savez(str(output_dir / "weights.safetensors"), **merged)
+            from mlx_lm.utils import save_weights  # type: ignore[import-untyped]
+
+            def _unflatten(flat: dict) -> dict:
+                """Reconstruct nested dict from dot-separated keys."""
+                tree: dict = {}
+                for key, val in flat.items():
+                    parts = key.split(".")
+                    d = tree
+                    for p in parts[:-1]:
+                        d = d.setdefault(p, {})
+                    d[parts[-1]] = val
+                return tree
+
+            save_weights(str(output_dir), _unflatten(merged))
 
             tokenizer.save_pretrained(str(output_dir))
 
