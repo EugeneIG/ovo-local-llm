@@ -3,7 +3,7 @@ import { useEffect, useRef, useState, useCallback } from "react";
 import { useTranslation } from "react-i18next";
 import {
   ArrowLeftRight, ArrowRight, ArrowLeft, Play, Square, Send,
-  Loader2, User, Trash2, Paperclip, History,
+  Loader2, User, Trash2, History,
 } from "lucide-react";
 import { useSidecarStore } from "../store/sidecar";
 import { useToastsStore } from "../store/toasts";
@@ -12,7 +12,7 @@ import { isChatCapableModel } from "../lib/models";
 import {
   createPingpongSession, listPingpongSessions, deletePingpongSession,
   addPingpongMessage, loadPingpongMessages,
-  type PingpongSession, type PingpongMessage,
+  type PingpongSession,
 } from "../db/pingpong";
 import type { OvoModel } from "../types/ovo";
 

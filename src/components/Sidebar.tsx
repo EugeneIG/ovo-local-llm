@@ -1,5 +1,5 @@
 import { useTranslation } from "react-i18next";
-import { MessageSquare, Code2, Image as ImageIcon, BookOpen, Package, Settings, Info, Gauge, GraduationCap, Blend, ArrowLeftRight } from "lucide-react";
+import { MessageSquare, Code2, Image as ImageIcon, BookOpen, Package, Settings, Info, GraduationCap, Blend, ArrowLeftRight } from "lucide-react";
 import type { ComponentType, SVGProps } from "react";
 import { RecentsPanel } from "./RecentsPanel";
 import { CodeRecentsPanel } from "./code/CodeRecentsPanel";
