@@ -31,7 +31,11 @@
     "auto": "자동 대화 시작",
     "stop": "중지",
     "clear": "대화 초기화",
-    "you": "나"
+    "you": "나",
+    "history": "대화 기록",
+    "no_history": "저장된 대화가 없습니다",
+    "at_hint": "@{{left}} 또는 @{{right}} 로 한쪽만 지목 가능",
+    "user_placeholder_named": "@{{left}} 또는 @{{right}} 로 지목하거나, 그냥 입력하면 양쪽에 전달"
   },
   "kb": {
     "title": "지식 베이스",

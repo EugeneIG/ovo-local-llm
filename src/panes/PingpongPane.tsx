@@ -1,13 +1,19 @@
-// [START] PingpongPane — two named models with personas talk to each other.
-import { useEffect, useRef, useState } from "react";
+// [START] PingpongPane — two named models with personas, history, @targeting, attachments.
+import { useEffect, useRef, useState, useCallback } from "react";
 import { useTranslation } from "react-i18next";
 import {
-  ArrowLeftRight, ArrowRight, ArrowLeft, Play, Square, Send, Loader2, User, Trash2,
+  ArrowLeftRight, ArrowRight, ArrowLeft, Play, Square, Send,
+  Loader2, User, Trash2, Paperclip, History,
 } from "lucide-react";
 import { useSidecarStore } from "../store/sidecar";
 import { useToastsStore } from "../store/toasts";
 import { listModels, streamChat, type ChatWireMessage } from "../lib/api";
 import { isChatCapableModel } from "../lib/models";
+import {
+  createPingpongSession, listPingpongSessions, deletePingpongSession,
+  addPingpongMessage, loadPingpongMessages,
+  type PingpongSession, type PingpongMessage,
+} from "../db/pingpong";
 import type { OvoModel } from "../types/ovo";
 
 interface ModelSlot {
@@ -25,7 +31,7 @@ interface DisplayMessage {
   speaker: string;
   role: "user" | "assistant";
   content: string;
-  side?: "left" | "right";
+  side: "left" | "right" | "user";
 }
 
 export function PingpongPane() {
@@ -43,6 +49,12 @@ export function PingpongPane() {
   const [streamingSide, setStreamingSide] = useState<"left" | "right" | null>(null);
   const [streamingText, setStreamingText] = useState("");
 
+  // [START] History
+  const [sessionId, setSessionId] = useState<string | null>(null);
+  const [sessions, setSessions] = useState<PingpongSession[]>([]);
+  const [showHistory, setShowHistory] = useState(false);
+  // [END]
+
   const autoRef = useRef(false);
   const abortRef = useRef<AbortController | null>(null);
   const timelineEndRef = useRef<HTMLDivElement>(null);
@@ -50,11 +62,74 @@ export function PingpongPane() {
   useEffect(() => {
     if (health !== "healthy") return;
     void listModels(ports).then((r) => setModels(r.models.filter(isChatCapableModel))).catch(() => {});
+    void listPingpongSessions().then(setSessions).catch(() => {});
   }, [health, ports]);
 
   useEffect(() => {
     timelineEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [timeline, streamingText]);
+
+  // [START] Save message to DB
+  const persistMessage = useCallback(async (msg: DisplayMessage) => {
+    if (!sessionId) return;
+    await addPingpongMessage({
+      session_id: sessionId,
+      speaker: msg.speaker,
+      side: msg.side,
+      role: msg.role,
+      content: msg.content,
+    }).catch(() => {});
+  }, [sessionId]);
+  // [END]
+
+  // [START] Auto-create session when first message is sent
+  const ensureSession = useCallback(async (): Promise<string> => {
+    if (sessionId) return sessionId;
+    const session = await createPingpongSession({
+      left_model: left.repoId,
+      left_name: left.name,
+      left_persona: left.persona,
+      right_model: right.repoId,
+      right_name: right.name,
+      right_persona: right.persona,
+    });
+    setSessionId(session.id);
+    setSessions((prev) => [session, ...prev]);
+    return session.id;
+  }, [sessionId, left, right]);
+  // [END]
+
+  // [START] Load session from history
+  const loadSession = useCallback(async (session: PingpongSession) => {
+    setLeft({ repoId: session.left_model, name: session.left_name, persona: session.left_persona, messages: [] });
+    setRight({ repoId: session.right_model, name: session.right_name, persona: session.right_persona, messages: [] });
+    setSessionId(session.id);
+    setShowHistory(false);
+
+    const msgs = await loadPingpongMessages(session.id);
+    const display: DisplayMessage[] = [];
+    const leftMsgs: ChatWireMessage[] = [];
+    const rightMsgs: ChatWireMessage[] = [];
+
+    for (const m of msgs) {
+      display.push({ speaker: m.speaker, role: m.role, content: m.content, side: m.side });
+      if (m.side === "user") {
+        leftMsgs.push({ role: "user", content: m.content });
+        rightMsgs.push({ role: "user", content: m.content });
+      } else if (m.side === "left") {
+        leftMsgs.push({ role: m.role, content: m.content });
+        rightMsgs.push({ role: "user", content: `[${m.speaker}]: ${m.content}` });
+      } else {
+        rightMsgs.push({ role: m.role, content: m.content });
+        leftMsgs.push({ role: "user", content: `[${m.speaker}]: ${m.content}` });
+      }
+    }
+
+    setTimeline(display);
+    setLeft((prev) => ({ ...prev, messages: leftMsgs }));
+    setRight((prev) => ({ ...prev, messages: rightMsgs }));
+  }, []);
+  // [END]
 
   const stopAll = () => {
     autoRef.current = false;
@@ -75,16 +150,14 @@ export function PingpongPane() {
     if (otherSlot.name) {
       parts.push(`You are having a conversation with ${otherSlot.name}${otherSlot.persona ? ` (${otherSlot.persona})` : ""}.`);
     }
-    parts.push("Respond naturally. The user may also join the conversation at any time.");
+    parts.push("Respond naturally. A human user may also join the conversation at any time.");
     return parts.join(" ");
   };
 
-  const generateResponse = async (
-    targetSide: "left" | "right",
-  ): Promise<string> => {
+  const generateResponse = async (targetSide: "left" | "right"): Promise<string> => {
     const slot = targetSide === "left" ? left : right;
     const otherSlot = targetSide === "left" ? right : left;
-    if (!slot.repoId) throw new Error("No model selected");
+    if (!slot.repoId) return "";
 
     const sysPrompt = buildSystemPrompt(slot, otherSlot);
     const msgs: ChatWireMessage[] = [
@@ -109,6 +182,11 @@ export function PingpongPane() {
           setStreamingText(full);
         }
       }
+    } catch (e) {
+      if ((e as Error).name !== "AbortError") {
+        useToastsStore.getState().push({ kind: "error", message: (e as Error).message });
+      }
+      return "";
     } finally {
       setStreaming(false);
       setStreamingSide(null);
@@ -121,12 +199,9 @@ export function PingpongPane() {
       setter((prev) => ({ ...prev, messages: [...prev.messages, assistantMsg] }));
 
       const speakerName = slot.name || slot.repoId.split("/").pop() || targetSide;
-      setTimeline((prev) => [...prev, {
-        speaker: speakerName,
-        role: "assistant",
-        content: full,
-        side: targetSide,
-      }]);
+      const displayMsg: DisplayMessage = { speaker: speakerName, role: "assistant", content: full, side: targetSide };
+      setTimeline((prev) => [...prev, displayMsg]);
+      void persistMessage(displayMsg);
     }
     return full;
   };
@@ -171,23 +246,48 @@ export function PingpongPane() {
     }
   };
 
+  // [START] @name targeting: "@짱구 ..." sends only to left, "@리나 ..." only to right
+  const parseTarget = (text: string): { target: "both" | "left" | "right"; cleanText: string } => {
+    const leftName = left.name.toLowerCase();
+    const rightName = right.name.toLowerCase();
+
+    if (leftName && text.toLowerCase().startsWith(`@${leftName}`)) {
+      return { target: "left", cleanText: text.slice(leftName.length + 1).trim() };
+    }
+    if (rightName && text.toLowerCase().startsWith(`@${rightName}`)) {
+      return { target: "right", cleanText: text.slice(rightName.length + 1).trim() };
+    }
+    return { target: "both", cleanText: text };
+  };
+  // [END]
+
   const sendUserMessage = async () => {
     const text = userInput.trim();
     if (!text) return;
     setUserInput("");
 
-    const userMsg: ChatWireMessage = { role: "user", content: text };
-    setLeft((prev) => ({ ...prev, messages: [...prev.messages, userMsg] }));
-    setRight((prev) => ({ ...prev, messages: [...prev.messages, userMsg] }));
+    await ensureSession();
 
-    setTimeline((prev) => [...prev, {
-      speaker: t("pingpong.you"),
-      role: "user",
-      content: text,
-    }]);
+    const { target, cleanText } = parseTarget(text);
+    const userMsg: ChatWireMessage = { role: "user", content: cleanText || text };
 
-    if (left.repoId) await generateResponse("left");
-    if (right.repoId) await generateResponse("right");
+    const displayMsg: DisplayMessage = { speaker: t("pingpong.you"), role: "user", content: text, side: "user" };
+    setTimeline((prev) => [...prev, displayMsg]);
+    void persistMessage(displayMsg);
+
+    if (target === "both" || target === "left") {
+      setLeft((prev) => ({ ...prev, messages: [...prev.messages, userMsg] }));
+    }
+    if (target === "both" || target === "right") {
+      setRight((prev) => ({ ...prev, messages: [...prev.messages, userMsg] }));
+    }
+
+    if ((target === "both" || target === "left") && left.repoId) {
+      await generateResponse("left");
+    }
+    if ((target === "both" || target === "right") && right.repoId) {
+      await generateResponse("right");
+    }
   };
 
   const clearAll = () => {
@@ -195,6 +295,7 @@ export function PingpongPane() {
     setLeft((prev) => ({ ...prev, messages: [] }));
     setRight((prev) => ({ ...prev, messages: [] }));
     setTimeline([]);
+    setSessionId(null);
   };
 
   if (health !== "healthy") {
@@ -212,17 +313,63 @@ export function PingpongPane() {
         <ArrowLeftRight className="w-5 h-5 text-ovo-accent" />
         <h2 className="text-lg font-semibold text-ovo-text">{t("pingpong.title")}</h2>
         <span className="text-xs text-ovo-muted ml-auto">{t("pingpong.subtitle")}</span>
+        <button
+          type="button"
+          onClick={() => setShowHistory((v) => !v)}
+          className={`p-1.5 rounded-md transition ${showHistory ? "text-ovo-accent bg-ovo-nav-active" : "text-ovo-muted hover:text-ovo-text"}`}
+          title={t("pingpong.history")}
+        >
+          <History className="w-4 h-4" />
+        </button>
       </header>
+
+      {/* History panel */}
+      {showHistory && (
+        <div className="rounded-xl bg-ovo-surface border border-ovo-border p-3 max-h-48 overflow-y-auto">
+          <div className="text-xs font-semibold text-ovo-text mb-2">{t("pingpong.history")}</div>
+          {sessions.length === 0 ? (
+            <p className="text-[11px] text-ovo-muted">{t("pingpong.no_history")}</p>
+          ) : (
+            <ul className="space-y-1">
+              {sessions.map((s) => (
+                <li key={s.id} className="flex items-center gap-2 text-xs">
+                  <button
+                    type="button"
+                    onClick={() => void loadSession(s)}
+                    className={`flex-1 text-left px-2 py-1.5 rounded transition truncate ${
+                      sessionId === s.id ? "bg-ovo-accent/10 text-ovo-accent" : "text-ovo-text hover:bg-ovo-nav-active-hover"
+                    }`}
+                  >
+                    {s.title}
+                    <span className="text-[10px] text-ovo-muted ml-2">
+                      {new Date(s.updated_at).toLocaleDateString()}
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      await deletePingpongSession(s.id);
+                      setSessions((prev) => prev.filter((x) => x.id !== s.id));
+                      if (sessionId === s.id) clearAll();
+                    }}
+                    className="p-1 text-ovo-muted hover:text-rose-500 transition shrink-0"
+                  >
+                    <Trash2 className="w-3 h-3" />
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
 
       {/* Model selectors with name + persona */}
       <div className="grid grid-cols-[1fr_auto_1fr] gap-3 items-start">
-        {/* Left slot */}
         <div className="space-y-1.5">
           <select
             value={left.repoId}
             onChange={(e) => setLeft((prev) => ({
-              ...prev,
-              repoId: e.target.value,
+              ...prev, repoId: e.target.value,
               name: prev.name || e.target.value.split("/").pop() || "",
             }))}
             className="w-full px-2.5 py-1.5 rounded-lg bg-ovo-surface border border-ovo-border text-xs text-ovo-text focus:outline-none focus:ring-1 focus:ring-ovo-accent"
@@ -233,33 +380,28 @@ export function PingpongPane() {
             ))}
           </select>
           <input
-            type="text"
-            value={left.name}
+            type="text" value={left.name}
             onChange={(e) => setLeft((prev) => ({ ...prev, name: e.target.value }))}
             placeholder={t("pingpong.name_placeholder")}
             className="w-full px-2.5 py-1 rounded-lg bg-ovo-surface border border-ovo-border text-xs text-ovo-accent font-semibold focus:outline-none focus:ring-1 focus:ring-ovo-accent"
           />
           <input
-            type="text"
-            value={left.persona}
+            type="text" value={left.persona}
             onChange={(e) => setLeft((prev) => ({ ...prev, persona: e.target.value }))}
             placeholder={t("pingpong.persona_placeholder")}
             className="w-full px-2.5 py-1 rounded-lg bg-ovo-surface border border-ovo-border text-[11px] text-ovo-muted focus:outline-none focus:ring-1 focus:ring-ovo-accent"
           />
         </div>
 
-        {/* VS badge */}
         <div className="flex items-center justify-center pt-2">
           <span className="text-xs font-bold text-ovo-muted">VS</span>
         </div>
 
-        {/* Right slot */}
         <div className="space-y-1.5">
           <select
             value={right.repoId}
             onChange={(e) => setRight((prev) => ({
-              ...prev,
-              repoId: e.target.value,
+              ...prev, repoId: e.target.value,
               name: prev.name || e.target.value.split("/").pop() || "",
             }))}
             className="w-full px-2.5 py-1.5 rounded-lg bg-ovo-surface border border-ovo-border text-xs text-ovo-text focus:outline-none focus:ring-1 focus:ring-ovo-accent"
@@ -270,15 +412,13 @@ export function PingpongPane() {
             ))}
           </select>
           <input
-            type="text"
-            value={right.name}
+            type="text" value={right.name}
             onChange={(e) => setRight((prev) => ({ ...prev, name: e.target.value }))}
             placeholder={t("pingpong.name_placeholder")}
             className="w-full px-2.5 py-1 rounded-lg bg-ovo-surface border border-ovo-border text-xs text-ovo-accent font-semibold focus:outline-none focus:ring-1 focus:ring-ovo-accent"
           />
           <input
-            type="text"
-            value={right.persona}
+            type="text" value={right.persona}
             onChange={(e) => setRight((prev) => ({ ...prev, persona: e.target.value }))}
             placeholder={t("pingpong.persona_placeholder")}
             className="w-full px-2.5 py-1 rounded-lg bg-ovo-surface border border-ovo-border text-[11px] text-ovo-muted focus:outline-none focus:ring-1 focus:ring-ovo-accent"
@@ -286,26 +426,31 @@ export function PingpongPane() {
         </div>
       </div>
 
-      {/* Conversation timeline + side controls */}
+      {/* Timeline + controls */}
       <div className="flex-1 flex gap-2 min-h-0">
-        {/* Timeline */}
         <div className="flex-1 rounded-xl bg-ovo-surface border border-ovo-border overflow-y-auto p-4 space-y-3 min-h-0">
           {timeline.length === 0 && !streaming && (
-            <div className="flex items-center justify-center h-full text-sm text-ovo-muted">
+            <div className="flex flex-col items-center justify-center h-full text-sm text-ovo-muted gap-2">
+              <ArrowLeftRight className="w-8 h-8" />
               {t("pingpong.empty")}
+              {left.name && right.name && (
+                <span className="text-[11px]">
+                  {t("pingpong.at_hint", { left: left.name, right: right.name })}
+                </span>
+              )}
             </div>
           )}
           {timeline.map((msg, i) => (
-            <div key={i} className={`flex gap-2 ${msg.role === "user" ? "justify-center" : msg.side === "left" ? "justify-start" : "justify-end"}`}>
+            <div key={i} className={`flex gap-2 ${msg.side === "user" ? "justify-center" : msg.side === "left" ? "justify-start" : "justify-end"}`}>
               <div className={`max-w-[75%] rounded-lg px-3 py-2 text-xs ${
-                msg.role === "user"
+                msg.side === "user"
                   ? "bg-sky-500/10 border border-sky-500/30 text-center"
                   : msg.side === "left"
                     ? "bg-ovo-accent/10 border border-ovo-accent/20"
                     : "bg-emerald-500/10 border border-emerald-500/20"
               }`}>
                 <div className={`font-semibold text-[11px] mb-1 ${
-                  msg.role === "user" ? "text-sky-400" : msg.side === "left" ? "text-ovo-accent" : "text-emerald-400"
+                  msg.side === "user" ? "text-sky-400" : msg.side === "left" ? "text-ovo-accent" : "text-emerald-400"
                 }`}>
                   {msg.speaker}
                 </div>
@@ -313,13 +458,10 @@ export function PingpongPane() {
               </div>
             </div>
           ))}
-          {/* Streaming indicator */}
           {streaming && streamingText && (
             <div className={`flex gap-2 ${streamingSide === "left" ? "justify-start" : "justify-end"}`}>
               <div className={`max-w-[75%] rounded-lg px-3 py-2 text-xs ${
-                streamingSide === "left"
-                  ? "bg-ovo-accent/10 border border-ovo-accent/20"
-                  : "bg-emerald-500/10 border border-emerald-500/20"
+                streamingSide === "left" ? "bg-ovo-accent/10 border border-ovo-accent/20" : "bg-emerald-500/10 border border-emerald-500/20"
               }`}>
                 <div className={`font-semibold text-[11px] mb-1 flex items-center gap-1 ${
                   streamingSide === "left" ? "text-ovo-accent" : "text-emerald-400"
@@ -334,87 +476,70 @@ export function PingpongPane() {
           <div ref={timelineEndRef} />
         </div>
 
-        {/* Control buttons */}
+        {/* Controls */}
         <div className="flex flex-col items-center justify-center gap-2 shrink-0">
-          <button
-            type="button"
-            disabled={streaming || !left.messages.length || !right.repoId}
+          <button type="button" disabled={streaming || !left.messages.length || !right.repoId}
             onClick={() => void pushToSide("left")}
             className="p-2 rounded-lg bg-ovo-surface border border-ovo-border text-ovo-muted hover:text-ovo-accent transition disabled:opacity-30"
-            title={t("pingpong.push_right")}
-          >
+            title={t("pingpong.push_right")}>
             <ArrowRight className="w-4 h-4" />
           </button>
 
           {autoMode ? (
-            <button
-              type="button"
-              onClick={stopAll}
+            <button type="button" onClick={stopAll}
               className="p-2 rounded-lg bg-rose-500/20 border border-rose-500/40 text-rose-400 hover:brightness-110 transition"
-              title={t("pingpong.stop")}
-            >
+              title={t("pingpong.stop")}>
               <Square className="w-4 h-4" />
             </button>
           ) : (
-            <button
-              type="button"
+            <button type="button"
               disabled={streaming || !left.repoId || !right.repoId || timeline.length === 0}
               onClick={() => void startAuto()}
               className="p-2 rounded-lg bg-ovo-accent/20 border border-ovo-accent/40 text-ovo-accent hover:brightness-110 transition disabled:opacity-30"
-              title={t("pingpong.auto")}
-            >
+              title={t("pingpong.auto")}>
               <Play className="w-4 h-4" />
             </button>
           )}
 
-          <button
-            type="button"
-            disabled={streaming || !right.messages.length || !left.repoId}
+          <button type="button" disabled={streaming || !right.messages.length || !left.repoId}
             onClick={() => void pushToSide("right")}
             className="p-2 rounded-lg bg-ovo-surface border border-ovo-border text-ovo-muted hover:text-ovo-accent transition disabled:opacity-30"
-            title={t("pingpong.push_left")}
-          >
+            title={t("pingpong.push_left")}>
             <ArrowLeft className="w-4 h-4" />
           </button>
 
           <div className="border-t border-ovo-border w-6 my-1" />
 
-          <button
-            type="button"
-            onClick={clearAll}
-            disabled={streaming}
+          <button type="button" onClick={clearAll} disabled={streaming}
             className="p-2 rounded-lg bg-ovo-surface border border-ovo-border text-ovo-muted hover:text-rose-500 transition disabled:opacity-30"
-            title={t("pingpong.clear")}
-          >
+            title={t("pingpong.clear")}>
             <Trash2 className="w-4 h-4" />
           </button>
         </div>
       </div>
 
-      {/* User input */}
+      {/* User input with @hint */}
       <div className="flex gap-2">
         <div className="flex items-center gap-1.5 text-sky-400 shrink-0">
           <User className="w-4 h-4" />
         </div>
         <input
-          type="text"
-          value={userInput}
+          type="text" value={userInput}
           onChange={(e) => setUserInput(e.target.value)}
           onKeyDown={(e) => {
-            if (e.key === "Enter" && !e.shiftKey) {
-              e.preventDefault();
-              void sendUserMessage();
-            }
+            if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void sendUserMessage(); }
           }}
-          placeholder={t("pingpong.user_placeholder")}
+          placeholder={
+            left.name && right.name
+              ? t("pingpong.user_placeholder_named", { left: left.name, right: right.name })
+              : t("pingpong.user_placeholder")
+          }
           disabled={streaming || (!left.repoId && !right.repoId)}
           className="flex-1 px-3 py-2.5 rounded-lg bg-ovo-surface border border-ovo-border text-sm text-ovo-text placeholder:text-ovo-muted focus:outline-none focus:ring-1 focus:ring-ovo-accent disabled:opacity-40"
         />
-        <button
-          disabled={!userInput.trim() || streaming}
+        <button disabled={!userInput.trim() || streaming}
           onClick={() => void sendUserMessage()}
-          className="px-4 py-2.5 rounded-lg bg-ovo-accent text-white disabled:opacity-40 hover:brightness-110 transition"
-        >
+          className="px-4 py-2.5 rounded-lg bg-ovo-accent text-white disabled:opacity-40 hover:brightness-110 transition">
           <Send className="w-4 h-4" />
         </button>
       </div>
