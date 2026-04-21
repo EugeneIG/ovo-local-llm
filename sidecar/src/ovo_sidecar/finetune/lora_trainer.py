@@ -1,0 +1,191 @@
+"""LoRA Training Runner — wraps mlx-lm fine-tuning API.
+
+Runs training in a background thread with progress callbacks.
+Supports: train, resume, cancel.
+"""
+from __future__ import annotations
+
+import asyncio
+import json
+import logging
+import time
+from pathlib import Path
+
+from ovo_sidecar.config import settings
+from ovo_sidecar.finetune.models import (
+    Adapter,
+    TrainingConfig,
+    TrainingRun,
+    _new_id,
+    _now_kst,
+)
+from ovo_sidecar.finetune.adapter_manager import (
+    _adapter_dir,
+    save_adapter_meta,
+)
+
+logger = logging.getLogger(__name__)
+
+_active_runs: dict[str, TrainingRun] = {}
+_cancel_flags: dict[str, bool] = {}
+
+
+def get_run(run_id: str) -> TrainingRun | None:
+    return _active_runs.get(run_id)
+
+
+def list_runs() -> list[TrainingRun]:
+    return list(_active_runs.values())
+
+
+def cancel_run(run_id: str) -> bool:
+    if run_id in _cancel_flags:
+        _cancel_flags[run_id] = True
+        return True
+    return False
+
+
+async def start_training(config: TrainingConfig) -> TrainingRun:
+    """Start a LoRA fine-tuning run in the background."""
+    run = TrainingRun(
+        adapter_name=config.adapter_name,
+        base_model=config.base_model,
+        dataset_id=config.dataset_id,
+        config=config,
+        total_epochs=config.epochs,
+        started_at=_now_kst(),
+    )
+    _active_runs[run.run_id] = run
+    _cancel_flags[run.run_id] = False
+
+    asyncio.create_task(_run_training(run))
+    return run
+
+
+async def _run_training(run: TrainingRun) -> None:
+    """Background training worker."""
+    run.status = "running"
+    start_time = time.time()
+
+    try:
+        adapter_path = _adapter_dir(run.run_id)
+        adapter_path.mkdir(parents=True, exist_ok=True)
+
+        def _train() -> None:
+            try:
+                from mlx_lm import load as mlx_load  # type: ignore[import-untyped]
+                from mlx_lm.tuner.trainer import TrainingArgs, train  # type: ignore[import-untyped]
+                from mlx_lm.tuner.utils import linear_to_lora_layers  # type: ignore[import-untyped]
+            except ImportError:
+                raise RuntimeError(
+                    "mlx-lm not installed. Run: pip install mlx-lm"
+                )
+
+            from ovo_sidecar.finetune.dataset_manager import get_dataset
+            dataset = get_dataset(run.config.dataset_id)
+            if not dataset:
+                raise ValueError(f"Dataset not found: {run.config.dataset_id}")
+
+            logger.info(
+                "Loading model %s for LoRA training (rank=%d, layers=%d)",
+                run.config.base_model, run.config.lora_rank, run.config.lora_layers,
+            )
+            model, tokenizer = mlx_load(run.config.base_model)
+
+            linear_to_lora_layers(
+                model,
+                lora_layers=run.config.lora_layers,
+                lora_parameters={"rank": run.config.lora_rank},
+            )
+
+            train_data = _load_jsonl(dataset.train_path)
+            valid_data = _load_jsonl(dataset.valid_path)
+
+            iters_per_epoch = max(1, len(train_data) // run.config.batch_size)
+            total_iters = iters_per_epoch * run.config.epochs
+
+            adapter_file = str(adapter_path / "adapters.safetensors")
+
+            args = TrainingArgs(
+                adapter_file=adapter_file,
+                iters=total_iters,
+                steps_per_eval=max(1, iters_per_epoch),
+                learning_rate=run.config.learning_rate,
+                batch_size=run.config.batch_size,
+                lora_layers=run.config.lora_layers,
+            )
+
+            class ProgressCallback:
+                def __init__(self, run_ref: TrainingRun) -> None:
+                    self.run = run_ref
+                    self.step = 0
+
+                def __call__(self, step: int, loss: float, **kwargs) -> None:  # type: ignore[no-untyped-def]
+                    self.step = step
+                    self.run.progress = min(1.0, step / max(1, total_iters))
+                    self.run.current_epoch = step // max(1, iters_per_epoch)
+                    self.run.train_loss = loss
+                    self.run.elapsed_seconds = time.time() - start_time
+
+                    val_loss = kwargs.get("val_loss")
+                    if val_loss is not None:
+                        self.run.valid_loss = val_loss
+
+                    if _cancel_flags.get(run.run_id, False):
+                        raise KeyboardInterrupt("Training cancelled by user")
+
+            import mlx.optimizers as optim  # type: ignore[import-untyped]
+            optimizer = optim.Adam(learning_rate=run.config.learning_rate)
+
+            try:
+                train(
+                    model=model,
+                    tokenizer=tokenizer,
+                    optimizer=optimizer,
+                    train_dataset=train_data,
+                    val_dataset=valid_data,
+                    args=args,
+                    training_callback=ProgressCallback(run),
+                )
+            except KeyboardInterrupt:
+                logger.info("Training cancelled: %s", run.adapter_name)
+                run.status = "cancelled"
+                return
+
+            adapter = Adapter(
+                adapter_id=run.run_id,
+                name=run.adapter_name,
+                base_model=run.config.base_model,
+                dataset_id=run.config.dataset_id,
+                dataset_name=run.dataset_name,
+                adapter_path=str(adapter_path),
+                created_at=_now_kst(),
+                config=run.config,
+            )
+            save_adapter_meta(adapter)
+
+        await asyncio.to_thread(_train)
+
+        if run.status != "cancelled":
+            run.status = "done"
+            run.progress = 1.0
+            run.completed_at = _now_kst()
+            logger.info("Training complete: %s (%.1fs)", run.adapter_name, run.elapsed_seconds)
+
+    except Exception as e:
+        logger.exception("Training failed: %s", run.adapter_name)
+        run.status = "error"
+        run.error = str(e)
+    finally:
+        run.elapsed_seconds = time.time() - start_time
+        _cancel_flags.pop(run.run_id, None)
+
+
+def _load_jsonl(path: str) -> list[dict]:
+    data: list[dict] = []
+    with open(path, "r", encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if line:
+                data.append(json.loads(line))
+    return data
