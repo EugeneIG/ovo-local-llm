@@ -303,6 +303,7 @@ export function PingpongPane() {
   async function buildAttachmentWire(text: string, atts: ChatAttachment[]): Promise<string | ChatContentPart[]> {
     if (atts.length === 0) return text;
 
+    const MAX_ATTACH_CHARS = 8000;
     const parts: ChatContentPart[] = [];
     let fullText = text;
 
@@ -320,7 +321,10 @@ export function PingpongPane() {
           });
           parts.push({ type: "image_url", image_url: { url: dataUrl } });
         } else {
-          const cached = preReadTexts.current[a.id];
+          let cached = preReadTexts.current[a.id] ?? "";
+          if (cached.length > MAX_ATTACH_CHARS) {
+            cached = cached.slice(0, MAX_ATTACH_CHARS) + "\n… [truncated]";
+          }
           if (cached) {
             fullText = fullText ? `${fullText}\n\n${cached}` : cached;
           }
@@ -530,6 +534,7 @@ export function PingpongPane() {
 
     if (target === "both" && left.repoId && right.repoId) {
       // [START] Sequential: left → right → auto-continue passing responses directly
+      // userMsg passed as extraMessages since React state hasn't re-rendered yet
       const leftResponse = await generateResponse("left", [userMsg]);
       if (leftResponse) {
         const leftName = left.name || left.repoId.split("/").pop() || "Left";
