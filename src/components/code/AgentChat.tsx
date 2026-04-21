@@ -1055,7 +1055,12 @@ export function AgentChat({ sessionId, modelRef, onModelChange }: AgentChatProps
           <textarea
             ref={textareaRef}
             value={input}
-            onChange={(e) => setInput(e.target.value)}
+            onChange={(e) => {
+              const val = e.target.value;
+              setInput(val);
+              if (val === "/") setSlashPaletteOpen(true);
+              else if (!val.startsWith("/")) setSlashPaletteOpen(false);
+            }}
             onKeyDown={(e) => {
               if (handleHistoryKey(e)) return;
               if (e.key === "Enter" && !e.shiftKey) {
