@@ -653,29 +653,27 @@ export function SettingsPane() {
 
   return (
     <div className="h-full overflow-y-auto">
-      <div className="p-6 max-w-2xl">
-        <h2 className="text-lg font-semibold text-ovo-text mb-6">{t("nav.settings")}</h2>
+      <div className="p-6 max-w-2xl space-y-6">
+        <h2 className="text-lg font-semibold text-ovo-text">{t("nav.settings")}</h2>
 
-      <section className="flex items-center justify-between py-3 border-b border-ovo-border">
-        <label className="text-sm text-ovo-text">{t("settings.language")}</label>
-        <LanguageToggle />
-      </section>
+      {/* ── 일반 ── */}
+      <div className="rounded-xl border border-ovo-border bg-ovo-surface/50 p-4 space-y-0">
+        <section className="flex items-center justify-between py-3 border-b border-ovo-border">
+          <label className="text-sm text-ovo-text">{t("settings.language")}</label>
+          <LanguageToggle />
+        </section>
+        <ThemeSection />
+      </div>
 
-      {/* [START] Theme selector — system / light / dark */}
-      <ThemeSection />
-      {/* [END] */}
+      {/* ── AI 엔진 ── */}
+      <div className="rounded-xl border border-ovo-border bg-ovo-surface/50 p-4">
+        <h3 className="text-xs font-semibold text-ovo-muted uppercase tracking-wider mb-2">AI</h3>
+        <RuntimeSection />
+        <FeatureFlagsSection />
+      </div>
 
-      <AdvancedSection ports={ports} models={models} />
-
-      {/* [START] Phase R — AI runtime reinstall */}
-      <RuntimeSection />
-      {/* [END] */}
-
-      {/* [START] Phase 8 — global feature flag toggles */}
-      <FeatureFlagsSection />
-      {/* [END] */}
-
-      {/* [START] Chat input section — streaming send mode + reply sound */}
+      {/* ── 대화 ── */}
+      <div className="rounded-xl border border-ovo-border bg-ovo-surface/50 p-4">
       <CollapsibleSection id="chat_input" title={t("settings.chat_input.section_title")}>
         <div className="flex flex-col gap-3">
           {STREAMING_SEND_MODES.map((m) => (
@@ -727,7 +725,6 @@ export function SettingsPane() {
       </CollapsibleSection>
       {/* [END] */}
 
-      {/* [START] Phase 6.4 — Sampling parameters section */}
       <CollapsibleSection
         id="sampling"
         title={t("settings.sampling.section_title")}
@@ -854,29 +851,7 @@ export function SettingsPane() {
           </div>
         </div>
       </CollapsibleSection>
-      {/* [END] */}
-
-      {/* [START] Phase 6.1 — Project Context section */}
-      <ProjectContextSection />
-      {/* [END] */}
-
-      {/* [START] Phase 8 — Persona section (.ovo/personas/*.md catalog) */}
-      <PersonaSection />
-      {/* [END] */}
-
-      {/* [START] Phase 6.4 — Skills section (.ovo/skills/*.md catalog) */}
-      <SkillsSection />
-      {/* [END] */}
-
-      {/* [START] Phase 6.2b — MCP Servers section */}
-      <McpServersSection />
-      {/* [END] */}
-
-      {/* [START] Phase 6.2c — tool-call approval mode */}
       <ToolModeSection />
-      {/* [END] */}
-
-      {/* [START] Context management section (R.6) */}
       <CollapsibleSection id="context" title={t("settings.context.section_title")}>
         {/* Compact strategy radio */}
         <div className="mb-5">
@@ -1065,9 +1040,20 @@ export function SettingsPane() {
           )}
         </div>
       </CollapsibleSection>
-      {/* [END] */}
+      </div>
 
-      {/* [START] Phase 7 — Desktop Pet toggle */}
+      {/* ── 확장 ── */}
+      <div className="rounded-xl border border-ovo-border bg-ovo-surface/50 p-4">
+        <ProjectContextSection />
+        <PersonaSection />
+        <SkillsSection />
+        <McpServersSection />
+      </div>
+
+      {/* ── 고급 ── */}
+      <div className="rounded-xl border border-ovo-border bg-ovo-surface/50 p-4">
+        <AdvancedSection ports={ports} models={models} />
+        {/* Desktop Pet toggle */}
       <CollapsibleSection id="pet" title={t("settings.pet.section_title")}>
         <label className="flex flex-col gap-0.5 cursor-pointer">
           <div className="flex items-center gap-2">
@@ -1082,7 +1068,8 @@ export function SettingsPane() {
           <p className="ml-6 text-xs text-ovo-muted">{t("settings.pet.enable_help")}</p>
         </label>
       </CollapsibleSection>
-      {/* [END] */}
+      </div>
+
       </div>
     </div>
   );
