@@ -421,7 +421,7 @@ export function PingpongPane() {
     }
 
     if (full) {
-      full = cleanModelOutput(full);
+      full = stripThinkForDisplay(cleanModelOutput(full));
       const assistantMsg: ChatWireMessage = { role: "assistant", content: full };
       const setter = targetSide === "left" ? setLeft : setRight;
       setter((prev) => ({ ...prev, messages: [...prev.messages, assistantMsg] }));
@@ -777,25 +777,30 @@ export function PingpongPane() {
                 }`}>
                   {msg.speaker}
                 </div>
-                <div className="text-ovo-text leading-relaxed">{renderBubbleContent(msg.role === "assistant" ? stripThinkForDisplay(msg.content) : msg.content)}</div>
+                <div className="text-ovo-text leading-relaxed">{renderBubbleContent(msg.content)}</div>
               </div>
             </div>
           ))}
-          {streaming && streamingText && (
-            <div className={`flex gap-2 ${streamingSide === "left" ? "justify-start" : "justify-end"}`}>
-              <div className={`max-w-[75%] rounded-lg px-3 py-2 text-xs ${
-                streamingSide === "left" ? "bg-ovo-accent/10 border border-ovo-accent/20" : "bg-emerald-500/10 border border-emerald-500/20"
-              }`}>
-                <div className={`font-semibold text-[11px] mb-1 flex items-center gap-1 ${
-                  streamingSide === "left" ? "text-ovo-accent" : "text-emerald-400"
+          {(() => {
+            if (!streaming || !streamingText) return null;
+            const displayText = stripThinkForStreaming(streamingText);
+            if (!displayText || displayText === "💭 ...") return null;
+            return (
+              <div className={`flex gap-2 ${streamingSide === "left" ? "justify-start" : "justify-end"}`}>
+                <div className={`max-w-[75%] rounded-lg px-3 py-2 text-xs ${
+                  streamingSide === "left" ? "bg-ovo-accent/10 border border-ovo-accent/20" : "bg-emerald-500/10 border border-emerald-500/20"
                 }`}>
-                  {streamingSide === "left" ? (left.name || "Left") : (right.name || "Right")}
-                  <Loader2 className="w-3 h-3 animate-spin" />
+                  <div className={`font-semibold text-[11px] mb-1 flex items-center gap-1 ${
+                    streamingSide === "left" ? "text-ovo-accent" : "text-emerald-400"
+                  }`}>
+                    {streamingSide === "left" ? (left.name || "Left") : (right.name || "Right")}
+                    <Loader2 className="w-3 h-3 animate-spin" />
+                  </div>
+                  <div className="text-ovo-text leading-relaxed">{renderBubbleContent(displayText)}</div>
                 </div>
-                <div className="text-ovo-text leading-relaxed">{renderBubbleContent(stripThinkForStreaming(streamingText))}</div>
               </div>
-            </div>
-          )}
+            );
+          })()}
           <div ref={timelineEndRef} />
         </div>
 
