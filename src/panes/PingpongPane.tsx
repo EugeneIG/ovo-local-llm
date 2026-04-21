@@ -458,12 +458,6 @@ export function PingpongPane() {
             placeholder={t("pingpong.name_placeholder")}
             className="w-full px-2.5 py-1 rounded-lg bg-ovo-surface border border-ovo-border text-xs text-ovo-accent font-semibold focus:outline-none focus:ring-1 focus:ring-ovo-accent"
           />
-          <input
-            type="text" value={left.persona}
-            onChange={(e) => setLeft((prev) => ({ ...prev, persona: e.target.value }))}
-            placeholder={t("pingpong.persona_placeholder")}
-            className="w-full px-2.5 py-1 rounded-lg bg-ovo-surface border border-ovo-border text-[11px] text-ovo-muted focus:outline-none focus:ring-1 focus:ring-ovo-accent"
-          />
         </div>
 
         <div className="flex items-center justify-center pt-2">
@@ -489,12 +483,6 @@ export function PingpongPane() {
             onChange={(e) => setRight((prev) => ({ ...prev, name: e.target.value }))}
             placeholder={t("pingpong.name_placeholder")}
             className="w-full px-2.5 py-1 rounded-lg bg-ovo-surface border border-ovo-border text-xs text-ovo-accent font-semibold focus:outline-none focus:ring-1 focus:ring-ovo-accent"
-          />
-          <input
-            type="text" value={right.persona}
-            onChange={(e) => setRight((prev) => ({ ...prev, persona: e.target.value }))}
-            placeholder={t("pingpong.persona_placeholder")}
-            className="w-full px-2.5 py-1 rounded-lg bg-ovo-surface border border-ovo-border text-[11px] text-ovo-muted focus:outline-none focus:ring-1 focus:ring-ovo-accent"
           />
         </div>
       </div>
