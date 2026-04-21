@@ -164,11 +164,13 @@ export function PingpongPane() {
     setStreamingText("");
   };
 
+  const topicRef = useRef("");
+
   const buildSystemPrompt = (slot: ModelSlot, otherSlot: ModelSlot): string => {
     const myName = slot.name || "AI";
     const otherName = otherSlot.name || "상대방";
-    let prompt = `너는 "${myName}"이다.${slot.persona ? ` ${slot.persona}.` : ""} "${otherName}"과 대화 중이다. 사용자가 준 주제에 대해서만 이야기하라. 다른 주제 금지. 2-3문장으로 짧게.`;
-    return prompt;
+    const topic = topicRef.current;
+    return `너는 "${myName}"이다.${slot.persona ? ` ${slot.persona}.` : ""} "${otherName}"과 "${topic}"에 대해 토론 중이다. 반드시 "${topic}"에 대해서만 이야기하라. 다른 주제 절대 금지. 즉시 의견을 말하라. 2-3문장.`;
   };
 
   const generateResponse = async (targetSide: "left" | "right", extraMessages?: ChatWireMessage[]): Promise<string> => {
@@ -295,6 +297,7 @@ export function PingpongPane() {
     await ensureSession();
 
     const { target, cleanText } = parseTarget(text);
+    topicRef.current = cleanText || text;
     const userMsg: ChatWireMessage = { role: "user", content: cleanText || text };
 
     const displayMsg: DisplayMessage = { speaker: t("pingpong.you"), role: "user", content: text, side: "user" };
