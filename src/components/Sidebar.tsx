@@ -1,11 +1,11 @@
 import { useTranslation } from "react-i18next";
-import { MessageSquare, Code2, Image as ImageIcon, BookOpen, Package, Settings, Info, Gauge } from "lucide-react";
+import { MessageSquare, Code2, Image as ImageIcon, BookOpen, Package, Settings, Info, Gauge, GraduationCap, Blend } from "lucide-react";
 import type { ComponentType, SVGProps } from "react";
 import { RecentsPanel } from "./RecentsPanel";
 import { CodeRecentsPanel } from "./code/CodeRecentsPanel";
 import { useThemeStore } from "../store/theme";
 
-export type NavKey = "chat" | "code" | "image" | "wiki" | "models" | "fit" | "settings" | "about";
+export type NavKey = "chat" | "code" | "image" | "wiki" | "finetune" | "blending" | "models" | "fit" | "settings" | "about";
 
 interface NavItem {
   key: NavKey;
@@ -16,16 +16,18 @@ const NAV_ITEMS: NavItem[] = [
   { key: "chat", icon: MessageSquare },
   { key: "code", icon: Code2 },
   { key: "image", icon: ImageIcon },
+  { key: "wiki", icon: BookOpen },
+  { key: "finetune", icon: GraduationCap },
+  { key: "blending", icon: Blend },
 ];
 
-// [START] Secondary bottom-dock items — models/wiki/settings/info rendered as
+// [START] Secondary bottom-dock items — models/settings/info rendered as
 // small icon-only buttons at the bottom center of the sidebar (no labels).
 // `fit` (Hardware Fit & Recommendations) slots in next to `models` because
 // both orbit the same "what can I run?" question from different angles.
 const BOTTOM_ITEMS: NavItem[] = [
   { key: "models", icon: Package },
   { key: "fit", icon: Gauge },
-  { key: "wiki", icon: BookOpen },
   { key: "settings", icon: Settings },
   { key: "about", icon: Info },
 ];

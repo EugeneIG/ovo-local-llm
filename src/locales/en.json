@@ -8,6 +8,8 @@
     "code": "Code",
     "image": "Image",
     "wiki": "Wiki",
+    "finetune": "Finetune",
+    "blending": "Blending",
     "models": "Models",
     "fit": "Fit",
     "settings": "Settings",
@@ -16,6 +18,30 @@
   "fit": {
     "title": "Hardware Fit",
     "subtitle": "Models that match your machine, at a glance"
+  },
+  "finetune": {
+    "title": "Finetune",
+    "subtitle": "Build your own model with your documents",
+    "coming_soon_title": "Coming soon ✨",
+    "coming_soon_desc": "Drag in PDFs, Word, Excel, or HWP docs —\nOVO will parse them into training data\nand run LoRA finetuning end-to-end.",
+    "step1_title": "Drop Documents",
+    "step1_desc": "Drag a whole folder, auto-parsed",
+    "step2_title": "Configure",
+    "step2_desc": "Epochs · learning rate · LoRA rank",
+    "step3_title": "Use Your Model",
+    "step3_desc": "Chat with your finetuned model right away"
+  },
+  "blending": {
+    "title": "Model Blending",
+    "subtitle": "Fuse the best of multiple models into one",
+    "coming_soon_title": "Coming soon ✨",
+    "coming_soon_desc": "A mergekit-powered blending GUI is on the way.\nCombine a coding model with a language model,\nor craft domain-specific hybrids.",
+    "method_ties_title": "Conflict Resolution Merge",
+    "method_ties_desc": "Minimize parameter conflicts when combining",
+    "method_dare_title": "Sparse Random Drop",
+    "method_dare_desc": "Drop low-magnitude weights before merging",
+    "method_slerp_title": "Spherical Interpolation",
+    "method_slerp_desc": "Smooth blend between two models"
   },
   "code": {
     "title": "Code",
