@@ -142,16 +142,18 @@ export function PingpongPane() {
 
   const buildSystemPrompt = (slot: ModelSlot, otherSlot: ModelSlot): string => {
     const parts: string[] = [];
+    parts.push(`Your name is "${slot.name || "AI"}".`);
     if (slot.persona) {
-      parts.push(`You are ${slot.name || "an AI"}. ${slot.persona}`);
-    } else if (slot.name) {
-      parts.push(`You are ${slot.name}.`);
+      parts.push(`Your role: ${slot.persona}.`);
     }
-    if (otherSlot.name) {
-      parts.push(`You are having a conversation with ${otherSlot.name}${otherSlot.persona ? ` (${otherSlot.persona})` : ""}.`);
-    }
-    parts.push("Respond naturally. A human user may also join the conversation at any time.");
-    return parts.join(" ");
+    parts.push(`You are in a live conversation with "${otherSlot.name || "the other AI"}"${otherSlot.persona ? ` (role: ${otherSlot.persona})` : ""}.`);
+    parts.push("IMPORTANT RULES:");
+    parts.push("1. Stay in character at all times. Respond as your persona.");
+    parts.push("2. When you see [Name]: message, that is the other participant talking to you. Respond to their points directly.");
+    parts.push("3. A human moderator may join with their own messages. Address them naturally.");
+    parts.push("4. Keep responses focused and conversational (2-4 paragraphs max). Do NOT write tutorials or documentation unless specifically asked.");
+    parts.push("5. Always respond in the same language the human used.");
+    return parts.join("\n");
   };
 
   const generateResponse = async (targetSide: "left" | "right"): Promise<string> => {
@@ -282,11 +284,26 @@ export function PingpongPane() {
       setRight((prev) => ({ ...prev, messages: [...prev.messages, userMsg] }));
     }
 
-    if ((target === "both" || target === "left") && left.repoId) {
-      await generateResponse("left");
-    }
-    if ((target === "both" || target === "right") && right.repoId) {
-      await generateResponse("right");
+    if (target === "both" && left.repoId && right.repoId) {
+      // [START] Sequential: left responds → relay to right → right responds
+      const leftResponse = await generateResponse("left");
+      if (leftResponse) {
+        const leftName = left.name || left.repoId.split("/").pop() || "Left";
+        const relayMsg: ChatWireMessage = {
+          role: "user",
+          content: `[${leftName}]: ${leftResponse}`,
+        };
+        setRight((prev) => ({ ...prev, messages: [...prev.messages, relayMsg] }));
+        await generateResponse("right");
+      }
+      // [END]
+    } else {
+      if ((target === "left") && left.repoId) {
+        await generateResponse("left");
+      }
+      if ((target === "right") && right.repoId) {
+        await generateResponse("right");
+      }
     }
   };
 
