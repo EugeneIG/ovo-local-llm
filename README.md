@@ -27,7 +27,7 @@
 ---
 
 <p align="center">
-  <video src="https://github.com/user-attachments/assets/71c02f2d-4445-44e8-a2f5-49da064c9e9a" width="860" controls autoplay muted loop>
+  <video src="https://github.com/user-attachments/assets/ff9f97cc-7a5c-4627-a547-d060ae1f2b86" width="860" controls autoplay muted loop>
     Your browser does not support the video tag.
   </video>
 </p>
