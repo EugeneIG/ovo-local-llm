@@ -96,7 +96,7 @@ const TIER_STYLE: Record<FitTier, { cls: string; dot: string }> = {
   },
 };
 
-export function FitOverview() {
+export function FitOverview({ hideRecommendations = false }: { hideRecommendations?: boolean } = {}) {
   const { t } = useTranslation();
   const sidecarHealth = useSidecarStore((s) => s.status.health);
   const ports = useSidecarStore((s) => s.status.ports);
@@ -332,7 +332,7 @@ export function FitOverview() {
       {/* [END] */}
 
       {/* [START] Phase 8 — Collapsible Recommendations card. */}
-      {sys && (
+      {sys && !hideRecommendations && (
         <FitCard
           storageKey="ovo:fit:recommended"
           defaultOpen={false}

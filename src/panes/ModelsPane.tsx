@@ -519,8 +519,8 @@ export function ModelsPane() {
   // [END]
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  // [START] Phase 7 — active tab: fit + general + image merged into one pane
-  const [activeTab, setActiveTab] = useState<"fit" | "general" | "image">("fit");
+  // [START] 4-tab layout: installed + fit + general(download+recs) + image(download)
+  const [activeTab, setActiveTab] = useState<"installed" | "fit" | "general" | "image">("installed");
   // Set of repo_ids currently being deleted (rmtree can take seconds on big
   // models — UI dims the row + spins the trash icon so the click registers).
   const [deleting, setDeleting] = useState<Set<string>>(new Set());
@@ -659,27 +659,27 @@ export function ModelsPane() {
       <div className="flex items-baseline justify-between mb-3">
         <h2 className="text-lg font-semibold text-ovo-text">{t("models.title")}</h2>
         <span className="text-xs text-ovo-muted">
-          {t("models.count", { count: filteredModels.length })}
+          {t("models.count", { count: models.length })}
         </span>
       </div>
 
-      {/* [START] fit / general / image tab switcher */}
-      <div className="inline-flex rounded-md border border-ovo-border bg-ovo-surface p-0.5 mb-4">
-        {(["fit", "general", "image"] as const).map((tab) => (
+      {/* [START] 4-tab switcher */}
+      <div className="flex flex-wrap rounded-md border border-ovo-border bg-ovo-surface p-0.5 mb-4 gap-0.5">
+        {(["installed", "fit", "general", "image"] as const).map((tab) => (
           <button
             key={tab}
             type="button"
             onClick={() => setActiveTab(tab)}
-            className={`px-3 py-1 text-xs rounded transition ${
+            className={`px-2.5 py-1 text-xs rounded transition ${
               activeTab === tab
                 ? "bg-ovo-accent text-ovo-accent-ink"
                 : "text-ovo-muted hover:text-ovo-text"
             }`}
           >
             {t(`models.tab_${tab}`)}
-            {tab !== "fit" && (
+            {tab === "installed" && (
               <span className="ml-1 font-mono tabular-nums text-[10px] opacity-70">
-                {tab === "image" ? imageModels.length : chatModels.length}
+                {models.length}
               </span>
             )}
           </button>
@@ -687,57 +687,65 @@ export function ModelsPane() {
       </div>
       {/* [END] */}
 
-      {/* [START] Fit tab — hardware fit overview */}
-      {activeTab === "fit" && <FitOverview />}
-      {/* [END] */}
-
-      {/* [START] Phase 8 — Fit overview moved to dedicated Fit pane.
-          ModelsPane now focuses on install-management only (downloads,
-          deletion, raw HF catalog). Hardware Fit + recommendations live
-          under the Fit tab. */}
-      {/* [END] */}
-
-      {/* [START] HF Download section — kind + catalog swap per tab */}
-      <HfDownloadSection
-        installedRepoIds={installedRepoIds}
-        ports={status.ports}
-        onDownloadDone={refreshModels}
-        onDelete={handleDeleteModel}
-        kind={activeTab === "image" ? "image" : "mlx"}
-        catalog={activeTab === "image" ? IMAGE_MODEL_CATALOG : undefined}
-      />
-      {/* [END] */}
-
-      {/* [START] Recommendations row — LLM perf only; hidden on image tab */}
-      {activeTab === "general" && recs.length > 0 && (
-        <div className="mb-4 grid grid-cols-1 md:grid-cols-3 gap-2">
-          {recs.map((r) =>
-            r.model ? (
-              <button
-                key={r.label}
-                type="button"
-                onClick={() => r.model && void mountModel(r.model.repo_id)}
-                className="text-left p-3 rounded-lg bg-ovo-surface border border-ovo-border flex flex-col gap-1 hover:bg-ovo-surface-solid transition"
-                title={r.model.repo_id}
-              >
-                <div className="text-[10px] uppercase tracking-wide text-ovo-muted flex items-center gap-1">
-                  <span aria-hidden>{r.icon}</span>
-                  <span>{r.label}</span>
-                </div>
-                <div className="text-sm text-ovo-text truncate font-medium">
-                  {r.model.repo_id.split("/").pop() ?? r.model.repo_id}
-                </div>
-                <div className={`text-[11px] font-mono ${perfColor(perfStats[r.model.repo_id]?.avg_tokens_per_sec ?? 0)}`}>
-                  {(perfStats[r.model.repo_id]?.avg_tokens_per_sec ?? 0).toFixed(1)} t/s
-                </div>
-              </button>
-            ) : null,
+      {/* [START] General tab — recommendations + HF download */}
+      {activeTab === "general" && (
+        <>
+          {recs.length > 0 && (
+            <div className="mb-4 grid grid-cols-1 md:grid-cols-3 gap-2">
+              {recs.map((r) =>
+                r.model ? (
+                  <button
+                    key={r.label}
+                    type="button"
+                    onClick={() => r.model && void mountModel(r.model.repo_id)}
+                    className="text-left p-3 rounded-lg bg-ovo-surface border border-ovo-border flex flex-col gap-1 hover:bg-ovo-surface-solid transition"
+                    title={r.model.repo_id}
+                  >
+                    <div className="text-[10px] uppercase tracking-wide text-ovo-muted flex items-center gap-1">
+                      <span aria-hidden>{r.icon}</span>
+                      <span>{r.label}</span>
+                    </div>
+                    <div className="text-sm text-ovo-text truncate font-medium">
+                      {r.model.repo_id.split("/").pop() ?? r.model.repo_id}
+                    </div>
+                    <div className={`text-[11px] font-mono ${perfColor(perfStats[r.model.repo_id]?.avg_tokens_per_sec ?? 0)}`}>
+                      {(perfStats[r.model.repo_id]?.avg_tokens_per_sec ?? 0).toFixed(1)} t/s
+                    </div>
+                  </button>
+                ) : null,
+              )}
+            </div>
           )}
-        </div>
+          <HfDownloadSection
+            installedRepoIds={installedRepoIds}
+            ports={status.ports}
+            onDownloadDone={refreshModels}
+            onDelete={handleDeleteModel}
+            kind="mlx"
+          />
+        </>
       )}
       {/* [END] */}
 
-      {filteredModels.length === 0 ? (
+      {/* [START] Image tab — image model download */}
+      {activeTab === "image" && (
+        <HfDownloadSection
+          installedRepoIds={installedRepoIds}
+          ports={status.ports}
+          onDownloadDone={refreshModels}
+          onDelete={handleDeleteModel}
+          kind="image"
+          catalog={IMAGE_MODEL_CATALOG}
+        />
+      )}
+      {/* [END] */}
+
+      {/* [START] Fit tab — hardware fit only (no recommendations) */}
+      {activeTab === "fit" && <FitOverview hideRecommendations />}
+      {/* [END] */}
+
+      {/* [START] Installed tab — all installed models */}
+      {activeTab === "installed" && (filteredModels.length === 0 ? (
         <div className="flex items-center justify-center text-sm text-ovo-muted py-8">
           {t("models.empty")}
         </div>
@@ -830,7 +838,7 @@ export function ModelsPane() {
             );
           })}
         </ul>
-      )}
+      ))}
     </div>
   );
 }

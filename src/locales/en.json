@@ -35,7 +35,8 @@
     "history": "Conversation history",
     "no_history": "No saved conversations",
     "at_hint": "Use @{{left}} or @{{right}} to target one model",
-    "user_placeholder_named": "@{{left}} or @{{right}} to target, or type to send to both"
+    "user_placeholder_named": "@{{left}} or @{{right}} to target, or type to send to both",
+    "intervene_hint": "Enter to stop, or type and Enter to intervene"
   },
   "kb": {
     "title": "Knowledge Base",
@@ -551,10 +552,11 @@
     }
   },
   "models": {
-    "title": "Installed models",
+    "title": "Models",
     "count": "{{count}} models",
     "empty": "No installed models. Use search or catalog above.",
     "mlx_only": "MLX models only",
+    "tab_installed": "Installed",
     "tab_fit": "Fit",
     "tab_general": "General",
     "tab_image": "Image",
@@ -674,7 +676,8 @@
     "rec": {
       "fastest": "Fastest",
       "most_used": "Most used",
-      "best_value": "Best value"
+      "best_value": "Best value",
+      "empty": "Use models first to get personalized recommendations."
     },
     "download": {
       "section_title": "Download Models",

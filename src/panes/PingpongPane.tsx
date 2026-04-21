@@ -535,7 +535,7 @@ export function PingpongPane() {
         </div>
       </div>
 
-      {/* User input with @hint */}
+      {/* User input — always enabled during streaming so user can intervene */}
       <div className="flex gap-2">
         <div className="flex items-center gap-1.5 text-sky-400 shrink-0">
           <User className="w-4 h-4" />
@@ -544,21 +544,33 @@ export function PingpongPane() {
           type="text" value={userInput}
           onChange={(e) => setUserInput(e.target.value)}
           onKeyDown={(e) => {
-            if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void sendUserMessage(); }
+            if (e.key === "Enter" && !e.shiftKey) {
+              e.preventDefault();
+              if (streaming) { stopAll(); } else { void sendUserMessage(); }
+            }
           }}
           placeholder={
-            left.name && right.name
-              ? t("pingpong.user_placeholder_named", { left: left.name, right: right.name })
-              : t("pingpong.user_placeholder")
+            streaming
+              ? t("pingpong.intervene_hint")
+              : left.name && right.name
+                ? t("pingpong.user_placeholder_named", { left: left.name, right: right.name })
+                : t("pingpong.user_placeholder")
           }
-          disabled={streaming || (!left.repoId && !right.repoId)}
+          disabled={!left.repoId && !right.repoId}
           className="flex-1 px-3 py-2.5 rounded-lg bg-ovo-surface border border-ovo-border text-sm text-ovo-text placeholder:text-ovo-muted focus:outline-none focus:ring-1 focus:ring-ovo-accent disabled:opacity-40"
         />
-        <button disabled={!userInput.trim() || streaming}
-          onClick={() => void sendUserMessage()}
-          className="px-4 py-2.5 rounded-lg bg-ovo-accent text-white disabled:opacity-40 hover:brightness-110 transition">
-          <Send className="w-4 h-4" />
-        </button>
+        {streaming ? (
+          <button onClick={stopAll}
+            className="px-4 py-2.5 rounded-lg bg-rose-500 text-white hover:brightness-110 transition">
+            <Square className="w-4 h-4" />
+          </button>
+        ) : (
+          <button disabled={!userInput.trim()}
+            onClick={() => void sendUserMessage()}
+            className="px-4 py-2.5 rounded-lg bg-ovo-accent text-white disabled:opacity-40 hover:brightness-110 transition">
+            <Send className="w-4 h-4" />
+          </button>
+        )}
       </div>
     </div>
   );

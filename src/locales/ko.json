@@ -35,7 +35,8 @@
     "history": "대화 기록",
     "no_history": "저장된 대화가 없습니다",
     "at_hint": "@{{left}} 또는 @{{right}} 로 한쪽만 지목 가능",
-    "user_placeholder_named": "@{{left}} 또는 @{{right}} 로 지목하거나, 그냥 입력하면 양쪽에 전달"
+    "user_placeholder_named": "@{{left}} 또는 @{{right}} 로 지목하거나, 그냥 입력하면 양쪽에 전달",
+    "intervene_hint": "Enter로 중지, 또는 입력 후 Enter로 끼어들기"
   },
   "kb": {
     "title": "지식 베이스",
@@ -551,13 +552,14 @@
     }
   },
   "models": {
-    "title": "설치된 모델",
+    "title": "모델",
     "count": "{{count}}개 모델",
     "empty": "설치된 모델이 없습니다. 위 검색/카탈로그에서 받아 보세요",
     "mlx_only": "MLX 모델만 표시",
+    "tab_installed": "설치된 모델",
     "tab_fit": "적합도",
-    "tab_general": "일반",
-    "tab_image": "이미지",
+    "tab_general": "일반모델",
+    "tab_image": "이미지모델",
     "fit": {
       "title": "하드웨어 적합도",
       "cores": "{{count}}코어",
@@ -675,7 +677,8 @@
     "rec": {
       "fastest": "가장 빠름",
       "most_used": "가장 많이 쓴",
-      "best_value": "효율 최고"
+      "best_value": "효율 최고",
+      "empty": "모델을 사용하면 맞춤 추천이 나타납니다."
     },
     "download": {
       "section_title": "모델 다운로드",
