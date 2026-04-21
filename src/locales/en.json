@@ -327,8 +327,8 @@
     "start": "Start sidecar",
     "installing": "Installing…",
     "bootstrap": {
-      "title": "Setting up the AI runtime",
-      "body": "First launch — installing the Python environment and model runtime. Takes 1–5 minutes and needs network.",
+      "title": "Setting up OVO",
+      "body": "First launch — installing Python and AI packages. Takes 1–5 minutes. Please don't close the app.",
       "preparing": "Preparing…",
       "failed_title": "Runtime install failed",
       "failed_body": "Likely a network or disk permissions issue. Retry, or start the install fresh.",

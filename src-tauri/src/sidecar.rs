@@ -286,7 +286,7 @@ fn spawn_bootstrap(app: AppHandle, command: tauri_plugin_shell::process::Command
         s.pid = None;
         s.healthy_apis.clear();
         s.message = Some("installing AI runtime…".into());
-        s.bootstrap_progress = Some("starting uv sync".into());
+        s.bootstrap_progress = Some("step 1/2: preparing Python environment…".into());
     });
 
     let (mut rx, _child) = match command.spawn() {
@@ -318,9 +318,26 @@ fn spawn_bootstrap(app: AppHandle, command: tauri_plugin_shell::process::Command
                     let s = String::from_utf8_lossy(&line).trim_end().to_string();
                     log::info!(target: "sidecar.boot", "{s}");
                     let _ = app_logs.emit(BOOTSTRAP_LOG_EVENT, &s);
-                    if !s.is_empty() {
-                        update_status(&app_logs, |st| st.bootstrap_progress = Some(s.clone()));
+                    // [START] User-friendly progress messages
+                    let friendly = if s.contains("Python") && (s.contains("download") || s.contains("install")) {
+                        Some("step 1/2: installing Python…".to_string())
+                    } else if s.contains("Resolved") || s.contains("resolved") {
+                        Some("step 2/2: resolving AI packages…".to_string())
+                    } else if s.contains("Installed") || s.contains("installed") {
+                        Some("step 2/2: installing AI packages…".to_string())
+                    } else if s.contains("Prepared") || s.contains("prepared") {
+                        Some("step 2/2: preparing packages…".to_string())
+                    } else if s.contains("Built") || s.contains("built") {
+                        Some("step 2/2: building packages…".to_string())
+                    } else if !s.is_empty() {
+                        Some(s.clone())
+                    } else {
+                        None
+                    };
+                    if let Some(msg) = friendly {
+                        update_status(&app_logs, |st| st.bootstrap_progress = Some(msg));
                     }
+                    // [END]
                     last_err = Some(s);
                 }
                 CommandEvent::Error(e) => {
@@ -332,7 +349,7 @@ fn spawn_bootstrap(app: AppHandle, command: tauri_plugin_shell::process::Command
                     log::info!(target: "sidecar.boot", "uv sync terminated code={:?}", payload.code);
                     if ok {
                         update_status(&app_logs, |s| {
-                            s.bootstrap_progress = Some("runtime ready".into());
+                            s.bootstrap_progress = Some("ready — launching OVO…".into());
                         });
                         // Brief pause before transitioning — lets the UI see
                         // the "ready" frame before the modal closes.
