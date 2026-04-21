@@ -192,6 +192,8 @@ export function PingpongPane() {
     const sysPrompt = buildSystemPrompt(slot, otherSlot);
     const msgs: ChatWireMessage[] = [
       { role: "system", content: sysPrompt },
+      { role: "user", content: `[역할 지시] ${sysPrompt}` },
+      { role: "assistant", content: `네, 저는 ${slot.name || "AI"}입니다. 주제에 대해 바로 의견을 말하겠습니다.` },
       ...slot.messages,
       ...(extraMessages ?? []),
     ];
