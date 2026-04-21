@@ -29,14 +29,40 @@ function defaultSlot(): ModelSlot {
 }
 
 // [START] Strip think blocks for pingpong display — show "think..." prefix
+const THINKING_MARKERS = /^(?:Here's a thinking process|Let me think|Thinking process|Analysis:|Step \d|1\.\s+\*\*Analyze|I need to|My thought process)/im;
+
 function stripThinkForDisplay(text: string): string {
   const normalized = normalizeReasoning(text);
-  const stripped = normalized
+  // Strip tagged think blocks
+  let stripped = normalized
     .replace(/<think>[\s\S]*?<\/think>/g, "")
     .replace(/<think>[\s\S]*/g, "")
     .replace(/<\/?think>/g, "")
     .trim();
-  const hadThink = normalized !== stripped || /<think>/i.test(normalized);
+  let hadThink = normalized !== stripped || /<think>/i.test(normalized);
+
+  // Detect untagged thinking: if text starts with a thinking marker,
+  // find the actual answer (last Korean paragraph block)
+  if (!hadThink && THINKING_MARKERS.test(stripped)) {
+    hadThink = true;
+    const lines = stripped.split("\n");
+    // Find the last block of Korean text (the actual answer)
+    let answerStart = -1;
+    for (let i = lines.length - 1; i >= 0; i--) {
+      if (/[\uac00-\ud7af]/.test(lines[i]) && lines[i].trim().length > 20) {
+        answerStart = i;
+        // Walk back to find the start of this paragraph
+        while (answerStart > 0 && lines[answerStart - 1].trim().length > 0 && /[\uac00-\ud7af]/.test(lines[answerStart - 1])) {
+          answerStart--;
+        }
+        break;
+      }
+    }
+    if (answerStart >= 0) {
+      stripped = lines.slice(answerStart).join("\n").trim();
+    }
+  }
+
   return hadThink && stripped ? `think...\n${stripped}` : stripped || text;
 }
 // [END]
@@ -184,7 +210,7 @@ export function PingpongPane() {
     const myName = slot.name || "AI";
     const otherName = otherSlot.name || "상대방";
     const topic = topicRef.current;
-    return `너는 "${myName}"이다.${slot.persona ? ` ${slot.persona}.` : ""} "${otherName}"과 "${topic}"에 대해 토론 중이다. 반드시 "${topic}"에 대해서만 이야기하라. 다른 주제 절대 금지. 즉시 의견을 말하라. 2-3문장.`;
+    return `너는 "${myName}"이다.${slot.persona ? ` ${slot.persona}.` : ""} "${otherName}"과 "${topic}"에 대해 토론 중이다. 반드시 "${topic}"에 대해서만 이야기하라. 다른 주제 절대 금지. 즉시 의견을 말하라. 2-3문장. 생각 과정, 분석, thinking process를 절대 출력하지 마라. 답변만 출력하라.`;
   };
 
   const generateResponse = async (targetSide: "left" | "right", extraMessages?: ChatWireMessage[]): Promise<string> => {
