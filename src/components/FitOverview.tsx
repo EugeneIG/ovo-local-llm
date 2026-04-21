@@ -168,8 +168,12 @@ export function FitOverview({ hideRecommendations = false }: { hideRecommendatio
         <div className="grid grid-cols-4 gap-3">
           <div className="p-3 rounded-lg bg-ovo-surface border border-ovo-border text-center">
             <Cpu className="w-4 h-4 text-ovo-accent mx-auto mb-1" />
-            <div className="text-sm font-semibold text-ovo-text">{sys.cpu.brand || "Apple Silicon"}</div>
-            <div className="text-[10px] text-ovo-muted">{sys.cpu.logical_cores} {t("models.fit.cores_unit")}</div>
+            <div className="text-sm font-semibold text-ovo-text">
+              {(sys.cpu as Record<string, unknown>).machine_model as string || sys.cpu.brand || "Apple Silicon"}
+            </div>
+            <div className="text-[10px] text-ovo-muted">
+              {sys.cpu.brand !== "arm" ? sys.cpu.brand + " · " : ""}{sys.cpu.logical_cores} {t("models.fit.cores_unit")}
+            </div>
           </div>
           <div className="p-3 rounded-lg bg-ovo-surface border border-ovo-border text-center">
             <Sparkles className="w-4 h-4 text-ovo-accent mx-auto mb-1" />

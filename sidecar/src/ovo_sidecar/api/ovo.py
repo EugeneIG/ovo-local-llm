@@ -1238,6 +1238,28 @@ def system_info() -> dict[str, Any]:
     machine = platform.machine()
     apple_silicon = machine in {"arm64", "aarch64"} and platform.system() == "Darwin"
 
+    # [START] Mac model name detection
+    mac_model = ""
+    chip_name = ""
+    if platform.system() == "Darwin":
+        import subprocess as _sp
+        try:
+            raw = _sp.run(
+                ["system_profiler", "SPHardwareDataType", "-json"],
+                capture_output=True, text=True, timeout=5,
+            )
+            if raw.returncode == 0:
+                import json as _json
+                hw = _json.loads(raw.stdout)
+                items = hw.get("SPHardwareDataType", [{}])
+                if items:
+                    item = items[0]
+                    mac_model = item.get("machine_name", "") or item.get("model_name", "")
+                    chip_name = item.get("chip_type", "")
+        except Exception:
+            pass
+    # [END]
+
     # [START] Phase 8 — surface MLX memory discipline numbers.
     # The frontend uses `gpu.mlx_memory_limit_bytes` as the *authoritative*
     # ceiling for fit scoring — it's what MLX can actually allocate without
@@ -1252,9 +1274,10 @@ def system_info() -> dict[str, Any]:
         "arch": machine,
         "os_release": platform.release(),
         "cpu": {
-            "brand": platform.processor() or machine,
+            "brand": chip_name or platform.processor() or machine,
             "logical_cores": psutil.cpu_count(logical=True) or 0,
             "physical_cores": psutil.cpu_count(logical=False) or 0,
+            "machine_model": mac_model,
         },
         "memory": {
             "total_bytes": int(vm.total),
