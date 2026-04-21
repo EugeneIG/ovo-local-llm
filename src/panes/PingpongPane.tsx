@@ -3,7 +3,7 @@ import React, { useEffect, useRef, useState, useCallback } from "react";
 import { useTranslation } from "react-i18next";
 import {
   ArrowLeftRight, ArrowRight, ArrowLeft, Play, Square, Send,
-  Loader2, User, Trash2, History, Plus, Paperclip, Code2, Link,
+  Loader2, Trash2, History, Plus, Paperclip, Code2, Link,
 } from "lucide-react";
 import { useSidecarStore } from "../store/sidecar";
 import { useToastsStore } from "../store/toasts";
