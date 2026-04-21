@@ -118,18 +118,37 @@ async def merge_adapter(adapter_id: str) -> str:
 
     def _do_merge() -> str:
         try:
-            from mlx_lm import fuse  # type: ignore[import-untyped]
+            from mlx_lm import load as mlx_load  # type: ignore[import-untyped]
+            from mlx_lm.fuse import save as mlx_save  # type: ignore[import-untyped]
+            from mlx.utils import tree_unflatten  # type: ignore[import-untyped]
         except ImportError:
             raise RuntimeError("mlx-lm not installed — cannot merge adapter")
 
         merged_path = str(_adapters_dir() / f"{adapter_id}_merged")
+        adapter_file = str(Path(adapter.adapter_path) / "adapters.safetensors")
 
-        fuse.main(fuse.FuseArgs(
-            model=adapter.base_model,
-            adapter_file=str(Path(adapter.adapter_path) / "adapters.safetensors"),
-            save_path=merged_path,
-            de_quantize=False,
-        ))
+        model, tokenizer, config = mlx_load(
+            adapter.base_model,
+            adapter_path=str(Path(adapter.adapter_path)),
+            return_config=True,
+        )
+
+        fused = [
+            (n, m.fuse(dequantize=False))
+            for n, m in model.named_modules()
+            if hasattr(m, "fuse")
+        ]
+        if fused:
+            model.update_modules(tree_unflatten(fused))
+
+        mlx_save(
+            Path(merged_path),
+            adapter.base_model,
+            model,
+            tokenizer,
+            config,
+            donate_model=False,
+        )
 
         return merged_path
 
