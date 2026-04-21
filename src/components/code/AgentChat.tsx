@@ -509,6 +509,14 @@ export function AgentChat({ sessionId, modelRef, onModelChange }: AgentChatProps
       onSelect: () => void handleCompact(),
     });
     list.push({
+      id: "chat",
+      section: SECTION,
+      label: "/chat",
+      hint: t("code.agent.slash_palette.hint_chat"),
+      keywords: ["chat", "conversation", "채팅"],
+      onSelect: () => window.dispatchEvent(new CustomEvent("ovo:navigate", { detail: "chat" })),
+    });
+    list.push({
       id: "model",
       section: SECTION,
       label: "/model",
@@ -585,16 +593,31 @@ export function AgentChat({ sessionId, modelRef, onModelChange }: AgentChatProps
     (e: React.DragEvent<HTMLDivElement>) => {
       e.preventDefault();
       setDragOver(false);
-      // Tauri drag-drop events expose file paths via the native bridge;
-      // HTMLDragEvent.dataTransfer.files carries a File handle which in
-      // Tauri has a `path` property surfaced on the drop.
+      const docExts = new Set(["pdf","hwp","hwpx","docx","xlsx","pptx"]);
       const files = Array.from(e.dataTransfer?.files ?? []);
       for (const f of files) {
-        const withPath = f as File & { path?: string };
-        if (withPath.path) addAttachment(withPath.path);
+        const ext = f.name.split(".").pop()?.toLowerCase() ?? "";
+        if (docExts.has(ext)) {
+          // [START] Document files → parse via sidecar and inject text
+          void (async () => {
+            try {
+              const { parseFile } = await import("../../lib/parsing");
+              const parsed = await parseFile(f, ports);
+              const block = `<attached_file filename="${f.name}" kind="${ext}">\n${parsed.full_text}\n</attached_file>`;
+              useCodeAgentStore.getState().appendToComposer(block);
+            } catch (err) {
+              const withPath = f as File & { path?: string };
+              if (withPath.path) addAttachment(withPath.path);
+            }
+          })();
+          // [END]
+        } else {
+          const withPath = f as File & { path?: string };
+          if (withPath.path) addAttachment(withPath.path);
+        }
       }
     },
-    [addAttachment],
+    [addAttachment, ports],
   );
 
   const handlePaste = useCallback(

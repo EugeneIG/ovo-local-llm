@@ -184,6 +184,8 @@
         "cycle_tool_mode": "도구 모드 → {{next}}",
         "open_tabs_hint": "열린 탭 {{count}}개",
         "hint_clear": "대화 삭제",
+        "hint_compact": "요약 및 압축",
+        "hint_chat": "채팅 화면으로 이동",
         "hint_mode": "{{mode}} 모드로 전환",
         "current": "현재",
         "none": "없음"

@@ -183,6 +183,8 @@
         "cycle_tool_mode": "Tool mode → {{next}}",
         "open_tabs_hint": "{{count}} open tab(s)",
         "hint_clear": "Clear conversation",
+        "hint_compact": "Summarize and compact",
+        "hint_chat": "Switch to Chat pane",
         "hint_mode": "Switch to {{mode}} mode",
         "current": "current",
         "none": "none"
