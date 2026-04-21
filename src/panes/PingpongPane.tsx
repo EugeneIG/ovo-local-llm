@@ -156,7 +156,7 @@ export function PingpongPane() {
     return parts.join("\n");
   };
 
-  const generateResponse = async (targetSide: "left" | "right"): Promise<string> => {
+  const generateResponse = async (targetSide: "left" | "right", extraMessages?: ChatWireMessage[]): Promise<string> => {
     const slot = targetSide === "left" ? left : right;
     const otherSlot = targetSide === "left" ? right : left;
     if (!slot.repoId) return "";
@@ -165,6 +165,7 @@ export function PingpongPane() {
     const msgs: ChatWireMessage[] = [
       { role: "system", content: sysPrompt },
       ...slot.messages,
+      ...(extraMessages ?? []),
     ];
 
     setStreaming(true);
@@ -225,7 +226,7 @@ export function PingpongPane() {
 
     const setter = targetSide === "left" ? setLeft : setRight;
     setter((prev) => ({ ...prev, messages: [...prev.messages, relayMsg] }));
-    await generateResponse(targetSide);
+    await generateResponse(targetSide, [relayMsg]);
   };
 
   const startAuto = async () => {
@@ -285,7 +286,7 @@ export function PingpongPane() {
     }
 
     if (target === "both" && left.repoId && right.repoId) {
-      // [START] Sequential: left responds → relay to right → right responds
+      // [START] Sequential: left responds → relay to right → right responds to left's answer
       const leftResponse = await generateResponse("left");
       if (leftResponse) {
         const leftName = left.name || left.repoId.split("/").pop() || "Left";
@@ -294,7 +295,7 @@ export function PingpongPane() {
           content: `[${leftName}]: ${leftResponse}`,
         };
         setRight((prev) => ({ ...prev, messages: [...prev.messages, relayMsg] }));
-        await generateResponse("right");
+        await generateResponse("right", [relayMsg]);
       }
       // [END]
     } else {

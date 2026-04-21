@@ -694,35 +694,9 @@ export function ModelsPane() {
       </div>
       {/* [END] */}
 
-      {/* [START] General tab — recommendations + HF download */}
+      {/* [START] General tab — HF download + recommended models */}
       {activeTab === "general" && (
         <>
-          {recs.length > 0 && (
-            <div className="mb-4 grid grid-cols-1 md:grid-cols-3 gap-2">
-              {recs.map((r) =>
-                r.model ? (
-                  <button
-                    key={r.label}
-                    type="button"
-                    onClick={() => r.model && void mountModel(r.model.repo_id)}
-                    className="text-left p-3 rounded-lg bg-ovo-surface border border-ovo-border flex flex-col gap-1 hover:bg-ovo-surface-solid transition"
-                    title={r.model.repo_id}
-                  >
-                    <div className="text-[10px] uppercase tracking-wide text-ovo-muted flex items-center gap-1">
-                      <span aria-hidden>{r.icon}</span>
-                      <span>{r.label}</span>
-                    </div>
-                    <div className="text-sm text-ovo-text truncate font-medium">
-                      {r.model.repo_id.split("/").pop() ?? r.model.repo_id}
-                    </div>
-                    <div className={`text-[11px] font-mono ${perfColor(perfStats[r.model.repo_id]?.avg_tokens_per_sec ?? 0)}`}>
-                      {(perfStats[r.model.repo_id]?.avg_tokens_per_sec ?? 0).toFixed(1)} t/s
-                    </div>
-                  </button>
-                ) : null,
-              )}
-            </div>
-          )}
           <HfDownloadSection
             installedRepoIds={installedRepoIds}
             ports={status.ports}
@@ -752,7 +726,37 @@ export function ModelsPane() {
       {activeTab === "fit" && <FitOverview hideRecommendations />}
       {/* [END] */}
 
-      {/* [START] Installed tab — all installed models */}
+      {/* [START] Installed tab — recs + all installed models */}
+      {activeTab === "installed" && (
+        <>
+          {recs.length > 0 && (
+            <div className="mb-4 grid grid-cols-1 md:grid-cols-3 gap-2">
+              {recs.map((r) =>
+                r.model ? (
+                  <button
+                    key={r.label}
+                    type="button"
+                    onClick={() => r.model && void mountModel(r.model.repo_id)}
+                    className="text-left p-3 rounded-lg bg-ovo-surface border border-ovo-border flex flex-col gap-1 hover:bg-ovo-surface-solid transition"
+                    title={r.model.repo_id}
+                  >
+                    <div className="text-[10px] uppercase tracking-wide text-ovo-muted flex items-center gap-1">
+                      <span aria-hidden>{r.icon}</span>
+                      <span>{r.label}</span>
+                    </div>
+                    <div className="text-sm text-ovo-text truncate font-medium">
+                      {r.model.repo_id.split("/").pop() ?? r.model.repo_id}
+                    </div>
+                    <div className={`text-[11px] font-mono ${perfColor(perfStats[r.model.repo_id]?.avg_tokens_per_sec ?? 0)}`}>
+                      {(perfStats[r.model.repo_id]?.avg_tokens_per_sec ?? 0).toFixed(1)} t/s
+                    </div>
+                  </button>
+                ) : null,
+              )}
+            </div>
+          )}
+        </>
+      )}
       {activeTab === "installed" && (filteredModels.length === 0 ? (
         <div className="flex items-center justify-center text-sm text-ovo-muted py-8">
           {t("models.empty")}
