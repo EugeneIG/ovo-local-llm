@@ -167,21 +167,8 @@ export function PingpongPane() {
   const buildSystemPrompt = (slot: ModelSlot, otherSlot: ModelSlot): string => {
     const myName = slot.name || "AI";
     const otherName = otherSlot.name || "상대방";
-    const parts: string[] = [];
-    parts.push(`당신의 이름은 "${myName}"입니다. 절대로 자신을 "${otherName}"이라고 부르지 마세요.`);
-    if (slot.persona) {
-      parts.push(`당신의 역할: ${slot.persona}`);
-    }
-    parts.push(`당신은 지금 "${otherName}"${otherSlot.persona ? ` (${otherSlot.persona})` : ""}과(와) 대화 중입니다.`);
-    parts.push(`[${otherName}]: 로 시작하는 메시지는 ${otherName}이 한 말입니다. 그 내용에 직접 반응하세요.`);
-    parts.push("규칙:");
-    parts.push(`1. 당신은 "${myName}"입니다. 항상 ${myName}의 입장에서 말하세요.`);
-    parts.push("2. 사용자가 준 주제에 대해 즉시 자신의 의견을 말하세요.");
-    parts.push("3. 절대로 '기다리겠습니다', '준비되었습니다', '말씀해주세요' 같은 수동적 답변을 하지 마세요.");
-    parts.push("4. 상대방 의견에 동의하거나 반박하되, 반드시 새로운 구체적 정보를 추가하세요.");
-    parts.push("5. 2-3문장으로 짧고 핵심만. 인사/겸손/목록/튜토리얼 금지.");
-    parts.push("6. 사용자가 쓴 언어와 같은 언어로 답하세요.");
-    return parts.join("\n");
+    let prompt = `너는 "${myName}"이다.${slot.persona ? ` ${slot.persona}.` : ""} "${otherName}"과 대화 중이다. 사용자가 준 주제에 대해서만 이야기하라. 다른 주제 금지. 2-3문장으로 짧게.`;
+    return prompt;
   };
 
   const generateResponse = async (targetSide: "left" | "right", extraMessages?: ChatWireMessage[]): Promise<string> => {
@@ -192,8 +179,6 @@ export function PingpongPane() {
     const sysPrompt = buildSystemPrompt(slot, otherSlot);
     const msgs: ChatWireMessage[] = [
       { role: "system", content: sysPrompt },
-      { role: "user", content: `[역할 지시] ${sysPrompt}` },
-      { role: "assistant", content: `네, 저는 ${slot.name || "AI"}입니다. 주제에 대해 바로 의견을 말하겠습니다.` },
       ...slot.messages,
       ...(extraMessages ?? []),
     ];
