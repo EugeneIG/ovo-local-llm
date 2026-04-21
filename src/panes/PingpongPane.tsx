@@ -321,26 +321,34 @@ export function PingpongPane() {
     }
 
     if (target === "both" && left.repoId && right.repoId) {
-      // [START] Sequential: left → right → auto-continue until stopped
+      // [START] Sequential: left → right → auto-continue passing responses directly
       const leftResponse = await generateResponse("left");
       if (leftResponse) {
         const leftName = left.name || left.repoId.split("/").pop() || "Left";
-        const relayMsg: ChatWireMessage = {
+        const rightName = right.name || right.repoId.split("/").pop() || "Right";
+        const relayToRight: ChatWireMessage = {
           role: "user",
           content: `[${leftName}]: ${leftResponse}`,
         };
-        setRight((prev) => ({ ...prev, messages: [...prev.messages, relayMsg] }));
-        const rightResponse = await generateResponse("right", [relayMsg]);
+        setRight((prev) => ({ ...prev, messages: [...prev.messages, relayToRight] }));
+        const rightResponse = await generateResponse("right", [relayToRight]);
 
         if (rightResponse) {
           autoRef.current = true;
           setAutoMode(true);
+          let lastLeft = leftResponse;
+          let lastRight = rightResponse;
           try {
             while (autoRef.current) {
-              await pushToSide("right");
-              if (!autoRef.current) break;
-              await pushToSide("left");
-              if (!autoRef.current) break;
+              const toLeft: ChatWireMessage = { role: "user", content: `[${rightName}]: ${lastRight}` };
+              setLeft((prev) => ({ ...prev, messages: [...prev.messages, toLeft] }));
+              lastLeft = await generateResponse("left", [toLeft]);
+              if (!lastLeft || !autoRef.current) break;
+
+              const toRight: ChatWireMessage = { role: "user", content: `[${leftName}]: ${lastLeft}` };
+              setRight((prev) => ({ ...prev, messages: [...prev.messages, toRight] }));
+              lastRight = await generateResponse("right", [toRight]);
+              if (!lastRight || !autoRef.current) break;
             }
           } catch { /* cancelled */ }
           finally {
