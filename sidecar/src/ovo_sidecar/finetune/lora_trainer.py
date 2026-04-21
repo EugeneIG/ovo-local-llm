@@ -95,7 +95,7 @@ async def _run_training(run: TrainingRun) -> None:
             linear_to_lora_layers(
                 model,
                 num_layers=run.config.lora_layers,
-                lora_parameters={"rank": run.config.lora_rank},
+                config={"rank": run.config.lora_rank, "alpha": run.config.lora_rank, "dropout": 0.0, "scale": 1.0},
             )
 
             train_data = _load_jsonl(dataset.train_path)
