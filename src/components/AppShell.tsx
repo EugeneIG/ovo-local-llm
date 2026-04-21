@@ -48,6 +48,9 @@ import { useModelProfilesStore } from "../store/model_profiles";
 // [START] Phase 8 — feature flags bootstrap
 import { useFeatureFlagsStore } from "../store/feature_flags";
 // [END]
+// [START] KB store bootstrap
+import { useKBStore } from "../store/knowledge_base";
+// [END]
 // [START] Phase 6.4 — skills bootstrap + project-path subscription
 import { useSkillsStore } from "../store/skills";
 // [END]
@@ -95,6 +98,9 @@ export function AppShell() {
     // [END]
     // [START] Phase 6.4 — model profiles bootstrap
     useModelProfilesStore.getState().load();
+    // [END]
+    // [START] KB store bootstrap
+    useKBStore.getState().load();
     // [END]
     // [START] Phase 6.4 — skills bootstrap: hydrate + rescan once the project
     // context store has finished resolving its default path. We run load() up

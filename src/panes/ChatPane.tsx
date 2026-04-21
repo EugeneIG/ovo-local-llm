@@ -11,7 +11,8 @@ import { ChatInput, type ChatInputHandle } from "../components/ChatInput";
 import { ModelProfileSelector } from "../components/ModelProfileSelector";
 import { SystemStatusPopover } from "../components/SystemStatusPopover";
 import { SidecarOfflineCard } from "../components/SidecarOfflineCard";
-import { Activity } from "lucide-react";
+import { KnowledgeBasePanel } from "../components/KnowledgeBasePanel";
+import { Activity, BookOpen } from "lucide-react";
 import { ChatMessageBubble } from "../components/ChatMessageBubble";
 import { Owl } from "../components/Owl";
 import type { OvoModel, Message } from "../types/ovo";
@@ -26,6 +27,9 @@ export function ChatPane() {
   const stopStreaming = useChatStore((s) => s.stopStreaming);
   // [START] HDD status popover toggle (left of ChatInput's + button)
   const [hddOpen, setHddOpen] = useState(false);
+  // [END]
+  // [START] KB panel popover toggle
+  const [kbOpen, setKbOpen] = useState(false);
   // [END]
 
   // [START] queue count + streaming send mode for ChatInput
@@ -325,26 +329,51 @@ export function ChatPane() {
         queueCount={queueCount}
         modelCapabilities={currentCapabilities}
         leftSlot={
-          <div className="relative shrink-0">
-            {hddOpen && (
-              <div className="absolute bottom-full left-0 mb-2 w-[320px] z-20">
-                <SystemStatusPopover open active="chat" />
-              </div>
-            )}
-            <button
-              type="button"
-              onClick={() => setHddOpen((v) => !v)}
-              title={t("chat.system_status")}
-              aria-label={t("chat.system_status")}
-              aria-pressed={hddOpen}
-              className={`h-[40px] w-[40px] rounded-lg border border-ovo-border flex items-center justify-center transition ${
-                hddOpen
-                  ? "bg-ovo-nav-active text-ovo-text"
-                  : "bg-ovo-surface-solid text-ovo-muted hover:bg-ovo-bg hover:text-ovo-text"
-              }`}
-            >
-              <Activity className="w-4 h-4" aria-hidden />
-            </button>
+          <div className="flex gap-1.5 shrink-0">
+            {/* HDD status */}
+            <div className="relative">
+              {hddOpen && (
+                <div className="absolute bottom-full left-0 mb-2 w-[320px] z-20">
+                  <SystemStatusPopover open active="chat" />
+                </div>
+              )}
+              <button
+                type="button"
+                onClick={() => { setHddOpen((v) => !v); setKbOpen(false); }}
+                title={t("chat.system_status")}
+                aria-label={t("chat.system_status")}
+                aria-pressed={hddOpen}
+                className={`h-[40px] w-[40px] rounded-lg border border-ovo-border flex items-center justify-center transition ${
+                  hddOpen
+                    ? "bg-ovo-nav-active text-ovo-text"
+                    : "bg-ovo-surface-solid text-ovo-muted hover:bg-ovo-bg hover:text-ovo-text"
+                }`}
+              >
+                <Activity className="w-4 h-4" aria-hidden />
+              </button>
+            </div>
+            {/* KB panel */}
+            <div className="relative">
+              {kbOpen && (
+                <div className="absolute bottom-full left-0 mb-2 w-[340px] z-20 p-3 rounded-xl bg-ovo-bg border border-ovo-border shadow-lg max-h-[400px] overflow-y-auto">
+                  <KnowledgeBasePanel />
+                </div>
+              )}
+              <button
+                type="button"
+                onClick={() => { setKbOpen((v) => !v); setHddOpen(false); }}
+                title={t("kb.title")}
+                aria-label={t("kb.title")}
+                aria-pressed={kbOpen}
+                className={`h-[40px] w-[40px] rounded-lg border border-ovo-border flex items-center justify-center transition ${
+                  kbOpen
+                    ? "bg-ovo-nav-active text-ovo-text"
+                    : "bg-ovo-surface-solid text-ovo-muted hover:bg-ovo-bg hover:text-ovo-text"
+                }`}
+              >
+                <BookOpen className="w-4 h-4" aria-hidden />
+              </button>
+            </div>
           </div>
         }
       />

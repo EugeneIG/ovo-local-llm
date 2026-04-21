@@ -15,6 +15,27 @@
     "settings": "Settings",
     "about": "About"
   },
+  "kb": {
+    "title": "Knowledge Base",
+    "new_placeholder": "New knowledge name...",
+    "empty": "No knowledge bases yet. Create one above.",
+    "stats": "{{docs}} docs, {{chunks}} chunks",
+    "activate": "Enable RAG search",
+    "deactivate": "Disable RAG search",
+    "add_docs": "Add document folder",
+    "delete": "Delete",
+    "select_folder": "Select document folder",
+    "hint": "Checked knowledge bases are automatically searched during chat to augment answers.",
+    "created": "\"{{name}}\" created",
+    "deleted": "\"{{name}}\" deleted",
+    "confirm_delete": "Delete \"{{name}}\"? All documents and vectors will be removed.",
+    "ingest_done": "{{count}} documents indexed",
+    "ingest_error": "Indexing error: {{error}}",
+    "install_required_title": "Document parsing engine required",
+    "install_required_desc": "To use the Knowledge Base, install the kordoc parsing engine. (~45MB)",
+    "install_btn": "Install",
+    "installing": "Installing..."
+  },
   "fit": {
     "title": "Hardware Fit",
     "subtitle": "Models that match your machine, at a glance"

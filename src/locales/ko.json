@@ -15,6 +15,27 @@
     "settings": "설정",
     "about": "정보"
   },
+  "kb": {
+    "title": "지식 베이스",
+    "new_placeholder": "새 지식 이름...",
+    "empty": "지식 베이스가 없습니다. 위에서 생성하세요.",
+    "stats": "{{docs}}개 문서, {{chunks}}개 청크",
+    "activate": "RAG 검색 활성화",
+    "deactivate": "RAG 검색 비활성화",
+    "add_docs": "문서 폴더 추가",
+    "delete": "삭제",
+    "select_folder": "문서 폴더 선택",
+    "hint": "체크된 지식은 채팅 시 자동으로 검색되어 답변에 반영됩니다.",
+    "created": "\"{{name}}\" 생성 완료",
+    "deleted": "\"{{name}}\" 삭제 완료",
+    "confirm_delete": "\"{{name}}\" 지식 베이스를 삭제하시겠습니까? 모든 문서와 벡터가 함께 삭제됩니다.",
+    "ingest_done": "{{count}}개 문서 인덱싱 완료",
+    "ingest_error": "인덱싱 중 오류: {{error}}",
+    "install_required_title": "문서 파싱 엔진 필요",
+    "install_required_desc": "지식 베이스 기능을 사용하려면 kordoc 파싱 엔진을 설치해야 합니다. (약 45MB)",
+    "install_btn": "설치",
+    "installing": "설치 중..."
+  },
   "fit": {
     "title": "하드웨어 적합도",
     "subtitle": "내 PC에 맞는 모델을 한눈에"
