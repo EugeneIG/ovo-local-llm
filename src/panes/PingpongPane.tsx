@@ -298,6 +298,13 @@ export function PingpongPane() {
     if (!text) return;
     setUserInput("");
 
+    // [START] Stop auto mode + current stream on user intervention
+    if (autoRef.current || streaming) {
+      stopAll();
+      await new Promise((r) => setTimeout(r, 500));
+    }
+    // [END]
+
     await ensureSession();
 
     const { target, cleanText } = parseTarget(text);
