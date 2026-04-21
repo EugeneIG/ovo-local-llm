@@ -8,10 +8,13 @@ import {
   startDownload,
   startDownloadFromUrl,
   getDownload,
+  getSystemInfo,
   listDownloads,
   deleteModel,
   cancelDownload,
+  type SystemInfo,
 } from "../lib/api";
+import { RecommendedModels } from "../components/FitOverview";
 import { Trash2, Loader2 } from "lucide-react";
 import type { HfSearchResult, DownloadTask } from "../lib/api";
 import { DownloadCell } from "../components/DownloadCell";
@@ -519,6 +522,7 @@ export function ModelsPane() {
   // [END]
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [sys, setSys] = useState<SystemInfo | null>(null);
   // [START] 4-tab layout: installed + fit + general(download+recs) + image(download)
   const [activeTab, setActiveTab] = useState<"installed" | "fit" | "general" | "image">("installed");
   // Set of repo_ids currently being deleted (rmtree can take seconds on big
@@ -590,6 +594,9 @@ export function ModelsPane() {
       .finally(() => {
         if (!cancelled) setLoading(false);
       });
+    getSystemInfo(status.ports).then((info) => {
+      if (!cancelled) setSys(info);
+    }).catch(() => {});
     return () => {
       cancelled = true;
     };
@@ -723,6 +730,7 @@ export function ModelsPane() {
             onDelete={handleDeleteModel}
             kind="mlx"
           />
+          {sys && <RecommendedModels sys={sys} installed={models} />}
         </>
       )}
       {/* [END] */}

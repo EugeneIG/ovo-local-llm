@@ -425,7 +425,7 @@ function FitCard({
 // [START] RecommendedModels — catalog → ranked list of install suggestions.
 // Catalog is loaded dynamically (remote → bundled fallback) so the app
 // doesn't need a new release each time the maintainer curates a new model.
-function RecommendedModels({ sys, installed }: { sys: SystemInfo; installed: OvoModel[] }) {
+export function RecommendedModels({ sys, installed }: { sys: SystemInfo; installed: OvoModel[] }) {
   const { t } = useTranslation();
   const ports = useSidecarStore((s) => s.status.ports);
   const pushToast = useToastsStore((s) => s.push);
