@@ -110,9 +110,8 @@ async def _run_training(run: TrainingRun) -> None:
                 adapter_file=adapter_file,
                 iters=total_iters,
                 steps_per_eval=max(1, iters_per_epoch),
-                learning_rate=run.config.learning_rate,
                 batch_size=run.config.batch_size,
-                lora_layers=run.config.lora_layers,
+                max_seq_length=run.config.max_seq_length,
             )
 
             class ProgressCallback:
