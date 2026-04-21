@@ -235,9 +235,7 @@ export function parseSegments(raw: string): Segment[] {
       .replace(/<\/?tool_use>/g, "")
       .replace(/<\/?tool_call>/g, "")
       .replace(/<\/?function_call>/g, "")
-      .replace(/<\/?tool_result>/g, "")
-      .replace(/<\/?think>/g, "")
-      .replace(/<\/?thinking>/g, "");
+      .replace(/<\/?tool_result>/g, "");
     return { type: "text", content: scrubbed };
   });
   // [START] Phase 5 — "answer trapped in <think>" rescue.

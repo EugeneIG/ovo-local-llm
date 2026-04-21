@@ -8,6 +8,7 @@ import {
 import { useSidecarStore } from "../store/sidecar";
 import { useToastsStore } from "../store/toasts";
 import { listModels, streamChat, cleanModelOutput, type ChatWireMessage } from "../lib/api";
+import { normalizeReasoning } from "../lib/messageSegments";
 import { isChatCapableModel } from "../lib/models";
 import {
   createPingpongSession, listPingpongSessions, deletePingpongSession,
@@ -26,6 +27,19 @@ interface ModelSlot {
 function defaultSlot(): ModelSlot {
   return { repoId: "", name: "", persona: "", messages: [] };
 }
+
+// [START] Strip think blocks for pingpong display — show "think..." prefix
+function stripThinkForDisplay(text: string): string {
+  const normalized = normalizeReasoning(text);
+  const stripped = normalized
+    .replace(/<think>[\s\S]*?<\/think>/g, "")
+    .replace(/<think>[\s\S]*/g, "")
+    .replace(/<\/?think>/g, "")
+    .trim();
+  const hadThink = normalized !== stripped || /<think>/i.test(normalized);
+  return hadThink && stripped ? `think...\n${stripped}` : stripped || text;
+}
+// [END]
 
 interface DisplayMessage {
   speaker: string;
@@ -512,7 +526,7 @@ export function PingpongPane() {
                 }`}>
                   {msg.speaker}
                 </div>
-                <div className="whitespace-pre-wrap text-ovo-text leading-relaxed">{msg.content}</div>
+                <div className="whitespace-pre-wrap text-ovo-text leading-relaxed">{msg.role === "assistant" ? stripThinkForDisplay(msg.content) : msg.content}</div>
               </div>
             </div>
           ))}
@@ -527,7 +541,7 @@ export function PingpongPane() {
                   {streamingSide === "left" ? (left.name || "Left") : (right.name || "Right")}
                   <Loader2 className="w-3 h-3 animate-spin" />
                 </div>
-                <div className="whitespace-pre-wrap text-ovo-text leading-relaxed">{streamingText}</div>
+                <div className="whitespace-pre-wrap text-ovo-text leading-relaxed">{stripThinkForDisplay(streamingText)}</div>
               </div>
             </div>
           )}
