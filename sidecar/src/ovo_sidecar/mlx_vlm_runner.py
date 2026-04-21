@@ -148,7 +148,13 @@ class MlxVlmRunner:
             model_lifecycle.unload_others(skip=self.unload, slot="llm")
             # [END]
             logger.info("loading MLX-VLM model: %s", ref_str)
-            loaded = await asyncio.to_thread(self._load, ref_str)
+            # [START] Catch load failures so sidecar stays alive
+            try:
+                loaded = await asyncio.to_thread(self._load, ref_str)
+            except Exception as e:
+                logger.error("VLM load failed: %s — %s", ref_str, e)
+                raise RuntimeError(f"Failed to load VLM {ref_str}: {e}") from e
+            # [END]
             self._loaded = loaded
             return loaded
 

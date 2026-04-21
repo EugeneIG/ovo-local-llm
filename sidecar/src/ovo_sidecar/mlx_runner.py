@@ -220,7 +220,14 @@ class MlxRunner:
             model_lifecycle.unload_others(skip=self.unload, slot="llm")
             # [END]
             logger.info("loading MLX model: %s", ref_str)
-            loaded = await asyncio.to_thread(self._load, ref_str)
+            # [START] Catch load failures (OOM, unsupported arch, corrupt weights)
+            # so the sidecar stays alive instead of crashing into a restart loop.
+            try:
+                loaded = await asyncio.to_thread(self._load, ref_str)
+            except Exception as e:
+                logger.error("model load failed: %s — %s", ref_str, e)
+                raise RuntimeError(f"Failed to load model {ref_str}: {e}") from e
+            # [END]
             self._loaded = loaded
             return loaded
 
