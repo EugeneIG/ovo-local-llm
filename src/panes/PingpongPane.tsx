@@ -40,8 +40,18 @@ export function PingpongPane() {
   const health = useSidecarStore((s) => s.status.health);
 
   const [models, setModels] = useState<OvoModel[]>([]);
-  const [left, setLeft] = useState<ModelSlot>(defaultSlot);
-  const [right, setRight] = useState<ModelSlot>(defaultSlot);
+  const [left, setLeft] = useState<ModelSlot>(() => {
+    try {
+      const saved = localStorage.getItem("ovo:pp:left");
+      return saved ? { ...defaultSlot(), ...JSON.parse(saved) } : defaultSlot();
+    } catch { return defaultSlot(); }
+  });
+  const [right, setRight] = useState<ModelSlot>(() => {
+    try {
+      const saved = localStorage.getItem("ovo:pp:right");
+      return saved ? { ...defaultSlot(), ...JSON.parse(saved) } : defaultSlot();
+    } catch { return defaultSlot(); }
+  });
   const [timeline, setTimeline] = useState<DisplayMessage[]>([]);
   const [userInput, setUserInput] = useState("");
   const [autoMode, setAutoMode] = useState(false);
@@ -54,6 +64,20 @@ export function PingpongPane() {
   const [sessions, setSessions] = useState<PingpongSession[]>([]);
   const [showHistory, setShowHistory] = useState(false);
   // [END]
+
+  useEffect(() => {
+    try {
+      const { repoId, name, persona } = left;
+      localStorage.setItem("ovo:pp:left", JSON.stringify({ repoId, name, persona }));
+    } catch {}
+  }, [left.repoId, left.name, left.persona]);
+
+  useEffect(() => {
+    try {
+      const { repoId, name, persona } = right;
+      localStorage.setItem("ovo:pp:right", JSON.stringify({ repoId, name, persona }));
+    } catch {}
+  }, [right.repoId, right.name, right.persona]);
 
   const autoRef = useRef(false);
   const abortRef = useRef<AbortController | null>(null);

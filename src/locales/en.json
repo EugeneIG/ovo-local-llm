@@ -122,7 +122,9 @@
     "blend_started": "Started blending \"{{name}}\"",
     "blend_done": "\"{{name}}\" blending complete!",
     "my_models": "My Blended Models",
-    "confirm_delete": "Delete blended model \"{{name}}\"?"
+    "confirm_delete": "Delete blended model \"{{name}}\"?",
+    "incompatible": "Incompatible architectures ({{archA}} vs {{archB}}). Only same-architecture models can be blended.",
+    "same_model": "Cannot blend the same model with itself."
   },
   "code": {
     "title": "Code",

@@ -122,7 +122,9 @@
     "blend_started": "\"{{name}}\" 블렌딩을 시작합니다",
     "blend_done": "\"{{name}}\" 블렌딩 완료!",
     "my_models": "내 블렌딩 모델",
-    "confirm_delete": "\"{{name}}\" 블렌딩 모델을 삭제하시겠습니까?"
+    "confirm_delete": "\"{{name}}\" 블렌딩 모델을 삭제하시겠습니까?",
+    "incompatible": "아키텍처가 다릅니다 ({{archA}} vs {{archB}}). 같은 구조의 모델만 블렌딩 가능합니다.",
+    "same_model": "같은 모델은 블렌딩할 수 없습니다."
   },
   "code": {
     "title": "코드",

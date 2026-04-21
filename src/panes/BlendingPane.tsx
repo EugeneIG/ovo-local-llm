@@ -28,6 +28,14 @@ export function BlendingPane() {
   const [name, setName] = useState("");
   const [starting, setStarting] = useState(false);
 
+  const getArch = (repoId: string) => {
+    const m = models.find((x) => x.repo_id === repoId);
+    const a = m?.architecture;
+    return Array.isArray(a) ? a[0] : a ?? "";
+  };
+  const compatible = !modelA || !modelB || getArch(modelA) === getArch(modelB);
+  const sameModel = modelA === modelB;
+
   const [activeRun, setActiveRun] = useState<BlendRun | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -204,8 +212,19 @@ export function BlendingPane() {
           <span>{modelB ? modelB.split("/").pop() : "Model B"}</span>
         </div>
 
+        {!compatible && modelA && modelB && (
+          <div className="px-3 py-2 rounded-lg bg-rose-500/10 border border-rose-500/30 text-xs text-rose-400">
+            {t("blending.incompatible", { archA: getArch(modelA), archB: getArch(modelB) })}
+          </div>
+        )}
+        {sameModel && modelA && (
+          <div className="px-3 py-2 rounded-lg bg-amber-500/10 border border-amber-500/30 text-xs text-amber-400">
+            {t("blending.same_model")}
+          </div>
+        )}
+
         <button
-          disabled={!name.trim() || !modelA || !modelB || modelA === modelB || starting}
+          disabled={!name.trim() || !modelA || !modelB || sameModel || !compatible || starting}
           onClick={() => void handleStart()}
           className="w-full px-4 py-2.5 rounded-lg bg-ovo-accent text-white text-sm font-medium disabled:opacity-40 hover:brightness-110 transition flex items-center justify-center gap-2"
         >
