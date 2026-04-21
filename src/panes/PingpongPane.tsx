@@ -3,13 +3,15 @@ import { useEffect, useRef, useState, useCallback } from "react";
 import { useTranslation } from "react-i18next";
 import {
   ArrowLeftRight, ArrowRight, ArrowLeft, Play, Square, Send,
-  Loader2, User, Trash2, History,
+  Loader2, User, Trash2, History, Plus, Paperclip, Code2, Link,
 } from "lucide-react";
 import { useSidecarStore } from "../store/sidecar";
 import { useToastsStore } from "../store/toasts";
-import { listModels, streamChat, cleanModelOutput, type ChatWireMessage } from "../lib/api";
+import { listModels, streamChat, cleanModelOutput, type ChatWireMessage, type ChatContentPart } from "../lib/api";
 import { normalizeReasoning } from "../lib/messageSegments";
 import { isChatCapableModel } from "../lib/models";
+import { extractAttachmentText, formatAttachedFileBlock } from "../lib/fileExtraction";
+import type { ChatAttachment } from "../types/ovo";
 import {
   createPingpongSession, listPingpongSessions, deletePingpongSession,
   addPingpongMessage, loadPingpongMessages,
@@ -28,42 +30,36 @@ function defaultSlot(): ModelSlot {
   return { repoId: "", name: "", persona: "", messages: [] };
 }
 
-// [START] Strip think blocks for pingpong display — show "think..." prefix
-const THINKING_MARKERS = /^(?:Here's a thinking process|Let me think|Thinking process|Analysis:|Step \d|1\.\s+\*\*Analyze|I need to|My thought process)/im;
+// [START] Strip ALL thinking from pingpong — display only the actual answer
+const THINKING_MARKERS = /(?:Here's a thinking process|Let me think|Thinking process|Analysis:|1\.\s+\*\*Analyze|I need to|My thought process|The user is asking|I should|I will)/im;
+const META_NOISE = /(?:✅|Check constraints|Self-Correction|Verification|Proceeds|Ready\.|Done\.|Note:|Final Check|All good|Output matches|All constraints|Let's count|Draft|Revised)/i;
 
 function stripThinkForDisplay(text: string): string {
   const normalized = normalizeReasoning(text);
-  // Strip tagged think blocks
   let stripped = normalized
     .replace(/<think>[\s\S]*?<\/think>/g, "")
     .replace(/<think>[\s\S]*/g, "")
     .replace(/<\/?think>/g, "")
     .trim();
-  let hadThink = normalized !== stripped || /<think>/i.test(normalized);
 
-  // Detect untagged thinking: if text starts with a thinking marker,
-  // find the actual answer (last Korean paragraph block)
-  if (!hadThink && THINKING_MARKERS.test(stripped)) {
-    hadThink = true;
-    const lines = stripped.split("\n");
-    // Find the last block of Korean text (the actual answer)
-    let answerStart = -1;
-    for (let i = lines.length - 1; i >= 0; i--) {
-      if (/[\uac00-\ud7af]/.test(lines[i]) && lines[i].trim().length > 20) {
-        answerStart = i;
-        // Walk back to find the start of this paragraph
-        while (answerStart > 0 && lines[answerStart - 1].trim().length > 0 && /[\uac00-\ud7af]/.test(lines[answerStart - 1])) {
-          answerStart--;
-        }
-        break;
-      }
-    }
-    if (answerStart >= 0) {
-      stripped = lines.slice(answerStart).join("\n").trim();
+  if (!THINKING_MARKERS.test(stripped)) return stripped || text;
+
+  const paragraphs = stripped.split(/\n\n+/);
+  const clean: string[] = [];
+  for (let i = paragraphs.length - 1; i >= 0; i--) {
+    const p = paragraphs[i].trim();
+    if (!p || p.length < 15) continue;
+    const hasKorean = /[\uac00-\ud7af]/.test(p);
+    const hasMeta = META_NOISE.test(p);
+    const hasThinkMarker = THINKING_MARKERS.test(p);
+    const isNumberedStep = /^\d+\.\s+\*\*/.test(p);
+    if (hasKorean && !hasMeta && !hasThinkMarker && !isNumberedStep) {
+      clean.unshift(p);
+    } else if (clean.length > 0) {
+      break;
     }
   }
-
-  return hadThink && stripped ? `think...\n${stripped}` : stripped || text;
+  return clean.length > 0 ? clean.join("\n\n") : stripped || text;
 }
 // [END]
 
@@ -103,6 +99,16 @@ export function PingpongPane() {
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [sessions, setSessions] = useState<PingpongSession[]>([]);
   const [showHistory, setShowHistory] = useState(false);
+  // [END]
+
+  // [START] Attachment state
+  const [attachments, setAttachments] = useState<ChatAttachment[]>([]);
+  const [showAttachMenu, setShowAttachMenu] = useState(false);
+  const [codeInput, setCodeInput] = useState<string | null>(null);
+  const [urlInput, setUrlInput] = useState(false);
+  const [urlValue, setUrlValue] = useState("");
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const attachMenuRef = useRef<HTMLDivElement>(null);
   // [END]
 
   useEffect(() => {
@@ -193,6 +199,118 @@ export function PingpongPane() {
     setLeft((prev) => ({ ...prev, messages: leftMsgs }));
     setRight((prev) => ({ ...prev, messages: rightMsgs }));
   }, []);
+  // [END]
+
+  // [START] Attachment handlers
+  function genId(): string {
+    return typeof crypto !== "undefined" && "randomUUID" in crypto
+      ? crypto.randomUUID()
+      : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  }
+
+  function readPreview(file: File): Promise<string | null> {
+    if (!file.type.startsWith("image/")) return Promise.resolve(null);
+    return new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(typeof reader.result === "string" ? reader.result : null);
+      reader.onerror = () => resolve(null);
+      reader.readAsDataURL(file);
+    });
+  }
+
+  async function handleFiles(fileList: FileList | File[]) {
+    const files = Array.from(fileList);
+    for (const f of files) {
+      const preview = await readPreview(f);
+      setAttachments((prev) => [...prev, { kind: "file", id: genId(), file: f, previewDataUrl: preview }]);
+    }
+    setShowAttachMenu(false);
+  }
+
+  function handleCodeSubmit() {
+    if (!codeInput?.trim()) return;
+    const blob = new Blob([codeInput], { type: "text/plain" });
+    const file = new File([blob], "code.txt", { type: "text/plain" });
+    setAttachments((prev) => [...prev, { kind: "file", id: genId(), file, previewDataUrl: null }]);
+    setCodeInput(null);
+  }
+
+  function handleUrlSubmit() {
+    if (!urlValue.trim()) return;
+    setAttachments((prev) => [...prev, { kind: "url", id: genId(), url: urlValue.trim() }]);
+    setUrlValue("");
+    setUrlInput(false);
+    setShowAttachMenu(false);
+  }
+
+  function removeAttachment(id: string) {
+    setAttachments((prev) => prev.filter((a) => a.id !== id));
+  }
+
+  async function buildAttachmentWire(text: string, atts: ChatAttachment[]): Promise<string | ChatContentPart[]> {
+    if (atts.length === 0) return text;
+
+    const parts: ChatContentPart[] = [];
+    const extractedBlocks: string[] = [];
+
+    if (text) parts.push({ type: "text", text });
+
+    for (const a of atts) {
+      if (a.kind === "url") {
+        parts.push({ type: "image_url", image_url: { url: a.url } });
+        continue;
+      }
+      if (a.kind === "file") {
+        const file = a.file;
+        if (file.type.startsWith("image/")) {
+          const dataUrl = await new Promise<string>((resolve) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(reader.result as string);
+            reader.readAsDataURL(file);
+          });
+          parts.push({ type: "image_url", image_url: { url: dataUrl } });
+        } else {
+          try {
+            const ext = await extractAttachmentText(file);
+            if (ext.kind !== "skipped") {
+              extractedBlocks.push(formatAttachedFileBlock(ext));
+            }
+          } catch {
+            extractedBlocks.push(`<attached_file filename="${file.name}">[extraction failed]</attached_file>`);
+          }
+        }
+      }
+    }
+
+    if (extractedBlocks.length > 0) {
+      const joined = extractedBlocks.join("\n\n");
+      const existingText = parts.find((p) => p.type === "text");
+      if (existingText && existingText.type === "text") {
+        existingText.text = `${existingText.text}\n\n${joined}`;
+      } else {
+        parts.push({ type: "text", text: joined });
+      }
+    }
+
+    const hasMultimodal = parts.some((p) => p.type === "image_url" || p.type === "input_audio");
+    if (!hasMultimodal && parts.length === 1 && parts[0].type === "text") {
+      return parts[0].text;
+    }
+    return parts;
+  }
+  // [END]
+
+  // [START] Close attach menu on outside click
+  useEffect(() => {
+    if (!showAttachMenu) return;
+    function handleOutside(e: MouseEvent) {
+      if (attachMenuRef.current && !attachMenuRef.current.contains(e.target as Node)) {
+        setShowAttachMenu(false);
+      }
+    }
+    document.addEventListener("mousedown", handleOutside);
+    return () => document.removeEventListener("mousedown", handleOutside);
+  }, [showAttachMenu]);
   // [END]
 
   const stopAll = () => {
@@ -324,7 +442,7 @@ export function PingpongPane() {
 
   const sendUserMessage = async () => {
     const text = userInput.trim();
-    if (!text) return;
+    if (!text && attachments.length === 0) return;
     setUserInput("");
 
     // [START] Stop auto mode + current stream on user intervention
@@ -338,7 +456,11 @@ export function PingpongPane() {
 
     const { target, cleanText } = parseTarget(text);
     topicRef.current = cleanText || text;
-    const userMsg: ChatWireMessage = { role: "user", content: cleanText || text };
+    // [START] Build wire content with attachments
+    const content = await buildAttachmentWire(cleanText || text, attachments);
+    const userMsg: ChatWireMessage = { role: "user", content };
+    setAttachments([]);
+    // [END]
 
     const displayMsg: DisplayMessage = { speaker: t("pingpong.you"), role: "user", content: text, side: "user" };
     setTimeline((prev) => [...prev, displayMsg]);
@@ -616,43 +738,144 @@ export function PingpongPane() {
         </div>
       </div>
 
-      {/* User input — always enabled during streaming so user can intervene */}
-      <div className="flex gap-2">
-        <div className="flex items-center gap-1.5 text-sky-400 shrink-0">
-          <User className="w-4 h-4" />
-        </div>
-        <input
-          type="text" value={userInput}
-          onChange={(e) => setUserInput(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && !e.shiftKey) {
-              e.preventDefault();
-              if (streaming) { stopAll(); } else { void sendUserMessage(); }
-            }
-          }}
-          placeholder={
-            streaming
-              ? t("pingpong.intervene_hint")
-              : left.name && right.name
-                ? t("pingpong.user_placeholder_named", { left: left.name, right: right.name })
-                : t("pingpong.user_placeholder")
-          }
-          disabled={!left.repoId && !right.repoId}
-          className="flex-1 px-3 py-2.5 rounded-lg bg-ovo-surface border border-ovo-border text-sm text-ovo-text placeholder:text-ovo-muted focus:outline-none focus:ring-1 focus:ring-ovo-accent disabled:opacity-40"
-        />
-        {streaming ? (
-          <button onClick={stopAll}
-            className="px-4 py-2.5 rounded-lg bg-rose-500 text-white hover:brightness-110 transition">
-            <Square className="w-4 h-4" />
-          </button>
-        ) : (
-          <button disabled={!userInput.trim()}
-            onClick={() => void sendUserMessage()}
-            className="px-4 py-2.5 rounded-lg bg-ovo-accent text-white disabled:opacity-40 hover:brightness-110 transition">
-            <Send className="w-4 h-4" />
-          </button>
+      {/* [START] User input with attachments */}
+      <div className="flex flex-col gap-1.5">
+        {/* Attachment chips */}
+        {attachments.length > 0 && (
+          <div className="flex flex-wrap gap-1.5 px-2">
+            {attachments.map((a) => (
+              <div key={a.id} className="flex items-center gap-1 px-2 py-1 rounded-md bg-ovo-chip border border-ovo-border text-xs text-ovo-text">
+                {a.kind === "file" && a.file.type.startsWith("image/") && a.previewDataUrl && (
+                  <img src={a.previewDataUrl} className="w-6 h-6 rounded object-cover" />
+                )}
+                {a.kind === "file" && <Paperclip className="w-3 h-3 text-ovo-muted" />}
+                {a.kind === "url" && <Link className="w-3 h-3 text-ovo-muted" />}
+                <span className="truncate max-w-[120px]">
+                  {a.kind === "file" ? a.file.name : a.kind === "url" ? a.url : ""}
+                </span>
+                <button onClick={() => removeAttachment(a.id)} className="text-ovo-muted hover:text-rose-500 ml-1">&times;</button>
+              </div>
+            ))}
+          </div>
         )}
+
+        {/* URL inline input */}
+        {urlInput && (
+          <div className="flex gap-2 px-2">
+            <input
+              type="text"
+              value={urlValue}
+              onChange={(e) => setUrlValue(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter") handleUrlSubmit(); if (e.key === "Escape") { setUrlInput(false); setUrlValue(""); } }}
+              placeholder="URL을 입력하세요..."
+              autoFocus
+              className="flex-1 px-2 py-1.5 rounded-md bg-ovo-surface border border-ovo-border text-xs text-ovo-text focus:outline-none focus:ring-1 focus:ring-ovo-accent"
+            />
+            <button onClick={handleUrlSubmit} disabled={!urlValue.trim()} className="px-3 py-1.5 text-xs rounded-md bg-ovo-accent text-white disabled:opacity-40">추가</button>
+            <button onClick={() => { setUrlInput(false); setUrlValue(""); }} className="px-3 py-1.5 text-xs rounded-md bg-ovo-border text-ovo-text">취소</button>
+          </div>
+        )}
+
+        {/* Input row */}
+        <div className="flex gap-2">
+          <div className="flex items-center gap-1.5 text-sky-400 shrink-0 relative" ref={attachMenuRef}>
+            <User className="w-4 h-4" />
+            <button
+              type="button"
+              onClick={() => setShowAttachMenu((v) => !v)}
+              className="p-1 rounded hover:bg-ovo-nav-active transition text-ovo-muted hover:text-ovo-accent"
+              title="첨부"
+            >
+              <Plus className="w-3.5 h-3.5" />
+            </button>
+            {showAttachMenu && (
+              <div className="absolute bottom-full left-0 mb-2 bg-ovo-surface border border-ovo-border rounded-lg shadow-lg py-1 z-50 min-w-[140px]">
+                <button
+                  type="button"
+                  onClick={() => { fileInputRef.current?.click(); }}
+                  className="w-full px-3 py-1.5 text-left text-xs text-ovo-text hover:bg-ovo-nav-active flex items-center gap-2"
+                >
+                  <Paperclip className="w-3.5 h-3.5" /> 파일 첨부
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setCodeInput(""); setShowAttachMenu(false); }}
+                  className="w-full px-3 py-1.5 text-left text-xs text-ovo-text hover:bg-ovo-nav-active flex items-center gap-2"
+                >
+                  <Code2 className="w-3.5 h-3.5" /> 코드
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setUrlInput(true); setShowAttachMenu(false); }}
+                  className="w-full px-3 py-1.5 text-left text-xs text-ovo-text hover:bg-ovo-nav-active flex items-center gap-2"
+                >
+                  <Link className="w-3.5 h-3.5" /> URL
+                </button>
+              </div>
+            )}
+            <input
+              ref={fileInputRef}
+              type="file"
+              multiple
+              accept="image/*,.pdf,.hwp,.hwpx,.docx,.xlsx,.pptx,.txt,.md,.csv,.json"
+              className="hidden"
+              onChange={(e) => { if (e.target.files) void handleFiles(e.target.files); e.target.value = ""; }}
+            />
+          </div>
+          <input
+            type="text" value={userInput}
+            onChange={(e) => setUserInput(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                if (streaming) { stopAll(); } else { void sendUserMessage(); }
+              }
+            }}
+            placeholder={
+              streaming
+                ? t("pingpong.intervene_hint")
+                : left.name && right.name
+                  ? t("pingpong.user_placeholder_named", { left: left.name, right: right.name })
+                  : t("pingpong.user_placeholder")
+            }
+            disabled={!left.repoId && !right.repoId}
+            className="flex-1 px-3 py-2.5 rounded-lg bg-ovo-surface border border-ovo-border text-sm text-ovo-text placeholder:text-ovo-muted focus:outline-none focus:ring-1 focus:ring-ovo-accent disabled:opacity-40"
+          />
+          {streaming ? (
+            <button onClick={stopAll}
+              className="px-4 py-2.5 rounded-lg bg-rose-500 text-white hover:brightness-110 transition">
+              <Square className="w-4 h-4" />
+            </button>
+          ) : (
+            <button disabled={!userInput.trim() && attachments.length === 0}
+              onClick={() => void sendUserMessage()}
+              className="px-4 py-2.5 rounded-lg bg-ovo-accent text-white disabled:opacity-40 hover:brightness-110 transition">
+              <Send className="w-4 h-4" />
+            </button>
+          )}
+        </div>
       </div>
+
+      {/* Code paste modal */}
+      {codeInput !== null && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={() => setCodeInput(null)}>
+          <div className="bg-ovo-surface border border-ovo-border rounded-xl p-4 w-[500px] max-h-[60vh] flex flex-col gap-3" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-sm font-semibold text-ovo-text">코드 붙여넣기</h3>
+            <textarea
+              value={codeInput}
+              onChange={(e) => setCodeInput(e.target.value)}
+              placeholder="소스 코드를 붙여넣으세요..."
+              className="flex-1 min-h-[200px] p-3 rounded-lg bg-ovo-bg border border-ovo-border text-xs font-mono text-ovo-text resize-none focus:outline-none focus:ring-1 focus:ring-ovo-accent"
+              autoFocus
+            />
+            <div className="flex justify-end gap-2">
+              <button onClick={() => setCodeInput(null)} className="px-3 py-1.5 text-xs rounded-md bg-ovo-border text-ovo-text hover:brightness-110 transition">취소</button>
+              <button onClick={handleCodeSubmit} disabled={!codeInput?.trim()} className="px-3 py-1.5 text-xs rounded-md bg-ovo-accent text-white disabled:opacity-40 hover:brightness-110 transition">추가</button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* [END] */}
     </div>
   );
 }
