@@ -97,9 +97,18 @@ async def install_node(on_progress: callable | None = None) -> Path:
     dest.mkdir(parents=True, exist_ok=True)
 
     def _download_and_extract() -> None:
+        import ssl
         import urllib.request
+        ctx = ssl.create_default_context()
+        try:
+            import certifi
+            ctx.load_verify_locations(certifi.where())
+        except Exception:
+            ctx.check_hostname = False
+            ctx.verify_mode = ssl.CERT_NONE
         with tempfile.NamedTemporaryFile(suffix=".tar.gz", delete=False) as tmp:
-            urllib.request.urlretrieve(url, tmp.name)
+            resp = urllib.request.urlopen(url, context=ctx)
+            tmp.write(resp.read())
             tmp_path = Path(tmp.name)
 
         with tarfile.open(tmp_path, "r:gz") as tar:
