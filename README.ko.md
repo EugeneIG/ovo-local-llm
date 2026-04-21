@@ -13,11 +13,11 @@
   <img src="https://img.shields.io/badge/Apple%20Silicon-M1%20%E2%86%92%20M4-orange" alt="Apple Silicon">
 </p>
 
-<h3 align="center">🦉 Apple Silicon 전용 로컬 Claude Code</h3>
+<h3 align="center">🦉 Apple Silicon 전용 프라이빗 코딩 에이전트</h3>
 
 <p align="center">
-  AI 코딩 에이전트 + 채팅 + 이미지 생성, 클라우드 제로.<br>
-  모든 오픈 LLM을 로컬로 — MLX · Transformers · VLM · Diffusion — Ollama/OpenAI API 호환.
+  내 코드를 클라우드에 보내지 않고, 내 Mac에서 직접 채팅·코딩·로컬 모델 워크플로를 실행.<br>
+  MLX 네이티브. Ollama/OpenAI API 호환. API 키 불필요.
 </p>
 
 <p align="center">

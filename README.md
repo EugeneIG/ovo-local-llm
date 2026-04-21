@@ -13,11 +13,11 @@
   <img src="https://img.shields.io/badge/Apple%20Silicon-M1%20%E2%86%92%20M4-orange" alt="Apple Silicon">
 </p>
 
-<h3 align="center">🦉 Local Claude Code for Apple Silicon</h3>
+<h3 align="center">🦉 A private Claude-Code-style coding agent for Apple Silicon</h3>
 
 <p align="center">
-  AI coding agent + chat + image gen, zero cloud.<br>
-  Run every open LLM locally — MLX, Transformers, VLM, Diffusion — with Ollama/OpenAI API compatibility.
+  Run chat, code, and local model workflows on-device — without shipping your work to the cloud.<br>
+  MLX-native. Ollama/OpenAI API compatible. Zero API keys.
 </p>
 
 <p align="center">
@@ -36,19 +36,19 @@
   <img src="docs/images/chat.png" alt="OVO chat" width="860">
 </p>
 
-## ✨ Features at a glance
-
-### 💬 Chat — every open LLM, one interface
-
-Native Ollama/OpenAI API compatibility, streaming responses, session recents, persona switching, file attachments (PDF / Excel / Word / images), voice input + TTS with auto language detection.
-
-### 💻 Code IDE — an agent with hands
+## 💻 Code — a local coding agent with hands
 
 <p align="center">
   <img src="docs/images/code.png" alt="OVO Code IDE" width="860">
 </p>
 
-Monaco editor + file explorer + Git panel + PTY terminal + AI inline completion. The Agent Chat on the right gets file read/write/search/exec tools and MCP server integration — it can actually do the work, not just describe it.
+Monaco editor + file explorer + Git panel + PTY terminal + AI inline completion. The Agent Chat on the right gets file read/write/search/exec tools and MCP server integration — it can actually do the work, not just describe it. Like Claude Code, but running on your Mac with any open LLM.
+
+## ✨ Also included
+
+### 💬 Chat — every open LLM, one interface
+
+Native Ollama/OpenAI API compatibility, streaming responses, persona switching, file attachments (PDF / Excel / Word / images), voice input + TTS.
 
 ### 🖼️ Image generation — diffusion on your laptop
 
@@ -56,7 +56,7 @@ Monaco editor + file explorer + Git panel + PTY terminal + AI inline completion.
   <img src="docs/images/image.png" alt="OVO image generation" width="860">
 </p>
 
-Local text-to-image via `diffusers`. Sampler / steps / CFG / LoRA controls. Styled presets for the 90% case.
+Local text-to-image via `diffusers`. Sampler / steps / CFG / LoRA controls.
 
 ### 📚 Wiki — persistent knowledge across sessions
 
@@ -64,7 +64,7 @@ Local text-to-image via `diffusers`. Sampler / steps / CFG / LoRA controls. Styl
   <img src="docs/images/wiki.png" alt="OVO wiki" width="860">
 </p>
 
-Curated notes + auto-captured session logs with BM25 + semantic search. Your local models can query the wiki to stay on-context across restarts.
+Curated notes + auto-captured session logs with BM25 + semantic search. Context that survives restarts.
 
 ### 🤖 Models — HuggingFace-native, zero re-downloads
 
@@ -72,7 +72,7 @@ Curated notes + auto-captured session logs with BM25 + semantic search. Your loc
   <img src="docs/images/models.png" alt="OVO models tab" width="860">
 </p>
 
-Auto-detects `~/.cache/huggingface/hub/` + LM Studio cache so models you already have just show up. Tier badges (Supported / Experimental), tok/s benchmarks, vision/audio capability flags.
+Auto-detects `~/.cache/huggingface/hub/` + LM Studio cache — models you already have just show up. Download from URL or search HuggingFace directly.
 
 ### 🧭 Hardware fit — pick a model that actually runs
 
@@ -80,7 +80,7 @@ Auto-detects `~/.cache/huggingface/hub/` + LM Studio cache so models you already
   <img src="docs/images/hardwarefit.png" alt="OVO hardware fit" width="860">
 </p>
 
-Scores every model against your RAM / GPU / context headroom. Sorts recommendations by real performance on your machine, not marketing claims.
+Scores every model against your RAM / GPU / context headroom. Know before you download.
 
 ### 🦉 Desktop mascot
 
@@ -90,7 +90,7 @@ Scores every model against your RAM / GPU / context headroom. Sorts recommendati
   <img src="docs/images/pet2.png" alt="Owl — idle" width="320">
 </p>
 
-An SVG owl that sits on your desktop and reacts to your coding state (idle / thinking / typing / happy). Double-click to summon the main window.
+An SVG owl that reacts to your coding state. Double-click to summon the main window.
 
 ## 📦 Install
 
