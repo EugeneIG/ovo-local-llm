@@ -26,6 +26,7 @@ import {
   listModels,
   searchModels,
   startDownload,
+  getDownload,
   type SystemInfo,
   type HfSearchResult,
 } from "../lib/api";
@@ -414,6 +415,9 @@ function RecommendedModels({ sys, installed }: { sys: SystemInfo; installed: Ovo
   const ports = useSidecarStore((s) => s.status.ports);
   const pushToast = useToastsStore((s) => s.push);
   const [installing, setInstalling] = useState<Set<string>>(new Set());
+  // [START] Download progress tracking
+  const [downloadProgress, setDownloadProgress] = useState<Record<string, number>>({});
+  // [END]
   const [catalog, setCatalog] = useState<CuratedModel[]>([]);
   const [catalogLoading, setCatalogLoading] = useState(true);
 
@@ -451,8 +455,32 @@ function RecommendedModels({ sys, installed }: { sys: SystemInfo; installed: Ovo
   async function handleInstall(repo_id: string) {
     setInstalling((s) => new Set(s).add(repo_id));
     try {
-      await startDownload(repo_id, ports);
+      const task = await startDownload(repo_id, ports);
       pushToast({ kind: "success", message: t("models.fit.installing") + " " + repo_id });
+
+      // [START] Poll download progress
+      const pollId = setInterval(async () => {
+        try {
+          const status = await getDownload(task.task_id, ports);
+          const total = status.total_bytes || 1;
+          const downloaded = status.downloaded_bytes || 0;
+          const pct = Math.round((downloaded / total) * 100);
+          setDownloadProgress((prev) => ({ ...prev, [repo_id]: pct }));
+
+          if (status.status === "done") {
+            clearInterval(pollId);
+            setInstalling((s) => { const n = new Set(s); n.delete(repo_id); return n; });
+            setDownloadProgress((prev) => { const n = { ...prev }; delete n[repo_id]; return n; });
+            pushToast({ kind: "success", message: repo_id + " ✅" });
+          } else if (status.status === "error") {
+            clearInterval(pollId);
+            setInstalling((s) => { const n = new Set(s); n.delete(repo_id); return n; });
+            setDownloadProgress((prev) => { const n = { ...prev }; delete n[repo_id]; return n; });
+            pushToast({ kind: "error", message: status.error || "Download failed" });
+          }
+        } catch { /* poll failure — retry next tick */ }
+      }, 2000);
+      // [END]
     } catch (e) {
       pushToast({
         kind: "error",
@@ -556,6 +584,7 @@ function RecommendedModels({ sys, installed }: { sys: SystemInfo; installed: Ovo
           loading={catalogLoading}
           visible={filteredCurated}
           installing={installing}
+          downloadProgress={downloadProgress}
           onInstall={handleInstall}
         />
       ) : (
@@ -674,11 +703,13 @@ function CuratedList({
   loading,
   visible,
   installing,
+  downloadProgress,
   onInstall,
 }: {
   loading: boolean;
   visible: Array<{ catalog: CuratedModel; installed: boolean; score: ScoreBreakdown }>;
   installing: Set<string>;
+  downloadProgress: Record<string, number>;
   onInstall: (repo_id: string) => void;
 }) {
   const { t } = useTranslation();
@@ -707,6 +738,7 @@ function CuratedList({
           installed={installed}
           score={score}
           busy={installing.has(catalog.repo_id)}
+          progress={downloadProgress[catalog.repo_id]}
           onInstall={() => onInstall(catalog.repo_id)}
         />
       ))}
@@ -897,12 +929,14 @@ function RecommendedRow({
   installed,
   score,
   busy,
+  progress,
   onInstall,
 }: {
   catalog: CuratedModel;
   installed: boolean;
   score: ScoreBreakdown;
   busy: boolean;
+  progress?: number;
   onInstall: () => void;
 }) {
   const { t } = useTranslation();
@@ -945,7 +979,9 @@ function RecommendedRow({
             ) : (
               <Download className="w-3 h-3" />
             )}
-            {busy ? t("models.fit.installing") : t("models.fit.install")}
+            {busy
+              ? progress !== undefined ? `${progress}%` : t("models.fit.installing")
+              : t("models.fit.install")}
           </button>
         )}
       </div>
