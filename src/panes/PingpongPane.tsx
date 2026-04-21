@@ -165,18 +165,20 @@ export function PingpongPane() {
   };
 
   const buildSystemPrompt = (slot: ModelSlot, otherSlot: ModelSlot): string => {
+    const myName = slot.name || "AI";
+    const otherName = otherSlot.name || "상대방";
     const parts: string[] = [];
-    parts.push(`Your name is "${slot.name || "AI"}".`);
+    parts.push(`당신의 이름은 "${myName}"입니다. 절대로 자신을 "${otherName}"이라고 부르지 마세요.`);
     if (slot.persona) {
-      parts.push(`Your role: ${slot.persona}.`);
+      parts.push(`당신의 역할: ${slot.persona}`);
     }
-    parts.push(`You are in a live conversation with "${otherSlot.name || "the other AI"}"${otherSlot.persona ? ` (role: ${otherSlot.persona})` : ""}.`);
-    parts.push("IMPORTANT RULES:");
-    parts.push("1. Stay in character at all times. Respond as your persona.");
-    parts.push("2. When you see [Name]: message, that is the other participant talking to you. Respond to their points directly.");
-    parts.push("3. A human moderator may join with their own messages. Address them naturally.");
-    parts.push("4. Keep responses focused and conversational (2-4 paragraphs max). Do NOT write tutorials or documentation unless specifically asked.");
-    parts.push("5. Always respond in the same language the human used.");
+    parts.push(`당신은 지금 "${otherName}"${otherSlot.persona ? ` (${otherSlot.persona})` : ""}과(와) 대화 중입니다.`);
+    parts.push(`[${otherName}]: 로 시작하는 메시지는 ${otherName}이 한 말입니다. 그 내용에 직접 반응하세요.`);
+    parts.push("규칙:");
+    parts.push(`1. 당신은 "${myName}"입니다. 항상 ${myName}의 입장에서 말하세요.`);
+    parts.push("2. 상대방의 의견에 동의하거나 반박하며 대화를 이어가세요.");
+    parts.push("3. 2-3문장으로 짧게 답하세요. 튜토리얼이나 목록을 쓰지 마세요.");
+    parts.push("4. 사용자가 쓴 언어와 같은 언어로 답하세요.");
     return parts.join("\n");
   };
 
@@ -221,6 +223,9 @@ export function PingpongPane() {
     }
 
     if (full) {
+      // [START] Strip model template tokens from output
+      full = full.replace(/<\|[^|]*\|>/g, "").trim();
+      // [END]
       const assistantMsg: ChatWireMessage = { role: "assistant", content: full };
       const setter = targetSide === "left" ? setLeft : setRight;
       setter((prev) => ({ ...prev, messages: [...prev.messages, assistantMsg] }));
@@ -310,7 +315,7 @@ export function PingpongPane() {
     }
 
     if (target === "both" && left.repoId && right.repoId) {
-      // [START] Sequential: left responds → relay to right → right responds to left's answer
+      // [START] Sequential: left → right → auto-continue until stopped
       const leftResponse = await generateResponse("left");
       if (leftResponse) {
         const leftName = left.name || left.repoId.split("/").pop() || "Left";
@@ -319,7 +324,24 @@ export function PingpongPane() {
           content: `[${leftName}]: ${leftResponse}`,
         };
         setRight((prev) => ({ ...prev, messages: [...prev.messages, relayMsg] }));
-        await generateResponse("right", [relayMsg]);
+        const rightResponse = await generateResponse("right", [relayMsg]);
+
+        if (rightResponse) {
+          autoRef.current = true;
+          setAutoMode(true);
+          try {
+            while (autoRef.current) {
+              await pushToSide("right");
+              if (!autoRef.current) break;
+              await pushToSide("left");
+              if (!autoRef.current) break;
+            }
+          } catch { /* cancelled */ }
+          finally {
+            autoRef.current = false;
+            setAutoMode(false);
+          }
+        }
       }
       // [END]
     } else {

@@ -3,7 +3,6 @@
 import { useTranslation } from "react-i18next";
 import { Trash2 } from "lucide-react";
 import { SidecarIndicator } from "./SidecarIndicator";
-import { ContextIndicator } from "./ContextIndicator";
 import { useSessionsStore } from "../store/sessions";
 import type { NavKey } from "./Sidebar";
 
