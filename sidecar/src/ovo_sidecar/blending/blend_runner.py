@@ -127,6 +127,12 @@ async def _run_blend(run: BlendRun, config: BlendConfig) -> None:
             model_b, _ = mlx_load(config.sources[1].repo_id)
             weights_b = _flatten_params(dict(model_b.parameters()))
 
+            if len(weights_a) != len(weights_b):
+                raise ValueError(
+                    f"Models have different layer counts ({len(weights_a)} vs {len(weights_b)}). "
+                    "Blending requires same architecture and size."
+                )
+
             if _cancel_flags.get(run.run_id, False):
                 raise KeyboardInterrupt("Blend cancelled")
 
