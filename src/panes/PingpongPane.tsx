@@ -329,12 +329,9 @@ export function PingpongPane() {
           setAutoMode(true);
           let lastLeft = leftResponse;
           let lastRight = rightResponse;
-          let turns = 0;
-          const MAX_AUTO_TURNS = 5;
           const originalTopic = cleanText || text;
           try {
-            while (autoRef.current && turns < MAX_AUTO_TURNS) {
-              turns++;
+            while (autoRef.current) {
               const toLeft: ChatWireMessage = { role: "user", content: `[주제 리마인드: ${originalTopic}]\n[${rightName}]: ${lastRight}` };
               setLeft((prev) => ({ ...prev, messages: [...prev.messages, toLeft] }));
               lastLeft = await generateResponse("left", [toLeft]);
