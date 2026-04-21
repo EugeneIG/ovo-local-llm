@@ -1,5 +1,5 @@
 import { useTranslation } from "react-i18next";
-import { MessageSquare, Code2, Image as ImageIcon, BookOpen, Package, Settings, Info, GraduationCap, Blend, ArrowLeftRight, Activity } from "lucide-react";
+import { MessageSquare, Code2, Image as ImageIcon, BookOpen, Package, Settings, Info, GraduationCap, Blend, ArrowLeftRight, Activity, ChevronDown } from "lucide-react";
 import { SystemStatusPopover } from "./SystemStatusPopover";
 import { useState, type ComponentType, type SVGProps } from "react";
 import { RecentsPanel } from "./RecentsPanel";
@@ -48,6 +48,9 @@ export function Sidebar({ active, onSelect }: SidebarProps) {
   const { t } = useTranslation();
   const effectiveTheme = useThemeStore((s) => s.effective);
   const [sidecarOpen, setSidecarOpen] = useState(false);
+  const [labOpen, setLabOpen] = useState<boolean>(() => {
+    try { return localStorage.getItem("ovo:lab-open") !== "false"; } catch { return true; }
+  });
   // [START] Two logo assets with identical 238×88 dimensions (dark variant
   // generated from the black source so position stays pixel-perfect).
   const logoSrc =
@@ -101,33 +104,44 @@ export function Sidebar({ active, onSelect }: SidebarProps) {
       </ul>
       {/* [END] */}
 
-      {/* [START] Section divider + Model Lab */}
+      {/* [START] Section divider + Model Lab (collapsible) */}
       <div className="mx-4 my-1 border-t border-ovo-border" />
-      <div className="px-5 pt-1 pb-1">
+      <button
+        type="button"
+        onClick={() => {
+          const next = !labOpen;
+          setLabOpen(next);
+          try { localStorage.setItem("ovo:lab-open", String(next)); } catch {}
+        }}
+        className="w-full flex items-center gap-2 px-5 pt-1 pb-1 hover:bg-ovo-nav-active-hover transition"
+      >
+        <ChevronDown className={`w-3 h-3 text-ovo-muted transition-transform ${labOpen ? "" : "-rotate-90"}`} />
         <span className="text-[10px] uppercase tracking-widest text-ovo-muted font-semibold">
           {t("nav.section_lab")}
         </span>
-      </div>
-      <ul className="pb-2">
-        {LAB_ITEMS.map(({ key, icon: Icon }) => {
-          const isActive = key === active;
-          return (
-            <li key={key}>
-              <button
-                onClick={() => onSelect(key)}
-                className={`w-full flex items-center gap-3 px-5 py-2.5 text-sm transition ${
-                  isActive
-                    ? "bg-ovo-nav-active text-ovo-text font-medium border-l-2 border-ovo-accent"
-                    : "text-ovo-muted hover:bg-ovo-nav-active-hover border-l-2 border-transparent"
-                }`}
-              >
-                <Icon className="w-4 h-4" aria-hidden />
-                <span>{t(`nav.${key}`)}</span>
-              </button>
-            </li>
-          );
-        })}
-      </ul>
+      </button>
+      {labOpen && (
+        <ul className="pb-2">
+          {LAB_ITEMS.map(({ key, icon: Icon }) => {
+            const isActive = key === active;
+            return (
+              <li key={key}>
+                <button
+                  onClick={() => onSelect(key)}
+                  className={`w-full flex items-center gap-3 px-5 py-2.5 text-sm transition ${
+                    isActive
+                      ? "bg-ovo-nav-active text-ovo-text font-medium border-l-2 border-ovo-accent"
+                      : "text-ovo-muted hover:bg-ovo-nav-active-hover border-l-2 border-transparent"
+                  }`}
+                >
+                  <Icon className="w-4 h-4" aria-hidden />
+                  <span>{t(`nav.${key}`)}</span>
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      )}
       {/* [END] */}
       {/* [START] Recents panel — context-dependent on active tab */}
       <div className="flex-1 overflow-y-auto min-h-0">
@@ -138,9 +152,9 @@ export function Sidebar({ active, onSelect }: SidebarProps) {
 
       {/* [START] Bottom dock — sidecar + models + settings + info */}
       <div className="relative flex items-center justify-center gap-4 py-3 border-t border-ovo-border">
-        {/* Sidecar status popover — anchored above dock, centered */}
+        {/* Sidecar status popover */}
         {sidecarOpen && (
-          <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-[280px] z-30">
+          <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-[200px] z-30">
             <SystemStatusPopover open active={active} />
           </div>
         )}

@@ -20,19 +20,9 @@ export function SystemStatusPopover({ open, active }: SystemStatusPopoverProps) 
   if (!open) return null;
 
   return (
-    <div className="mx-2 mb-2 bg-ovo-surface rounded-lg border border-ovo-border p-3 flex flex-col gap-2">
-      {/* Sidecar status row */}
+    <div className="bg-ovo-surface rounded-lg border border-ovo-border p-2.5 flex flex-col gap-2">
+      {/* Sidecar status + restart */}
       <SidecarIndicator />
-
-      {/* Divider */}
-      <div className="h-px bg-ovo-border" aria-hidden="true" />
-
-      {/* Context token ring + reset dropdown row */}
-      <div className="px-1">
-        <ContextIndicator />
-      </div>
-
-      {/* Tool mode moved to ChatPane input bar */}
 
       {/* Divider + trash button — only when chat tab is active and session has messages */}
       {active === "chat" && hasMessages && (
